@@ -325,6 +325,27 @@ async def get_order_detail(request: web.Request) -> web.Response:
     return web.json_response({"order": result})
 
 
+def _parse_lzt_error(error: str) -> str:
+    """Convert raw LZT API error to user-friendly message."""
+    e = str(error)
+    if "недействительна" in e or "заблокирован" in e:
+        return "Сессия недействительна — аккаунт заблокирован или деавторизован"
+    if "Слишком новая авторизация" in e:
+        return "Слишком новая авторизация. Подождите 24 часа (ограничение Telegram)"
+    if "429" in e or "Too many" in e or "подождите" in e.lower():
+        return "Слишком частые запросы. Подождите пару минут"
+    if "не найден" in e or "404" in e:
+        return "Аккаунт не найден на маркете"
+    if "403" in e:
+        # Try to extract the actual error message from JSON
+        import re
+        match = re.search(r'"errors":\s*\[\s*"(.+?)"', e)
+        if match:
+            return match.group(1)
+        return "Доступ запрещён"
+    return "Ошибка: " + e[:100]
+
+
 async def telegram_login_code(request: web.Request) -> web.Response:
     """Request Telegram login code for a purchased account."""
     item_id = int(request.match_info["item_id"])
@@ -333,7 +354,7 @@ async def telegram_login_code(request: web.Request) -> web.Response:
         return web.json_response(result)
     except Exception as e:
         logger.error("Telegram code error for #%d: %s", item_id, e)
-        return web.json_response({"error": str(e)}, status=400)
+        return web.json_response({"error": _parse_lzt_error(e)}, status=400)
 
 
 async def telegram_reset_auth(request: web.Request) -> web.Response:
@@ -344,7 +365,7 @@ async def telegram_reset_auth(request: web.Request) -> web.Response:
         return web.json_response(result)
     except Exception as e:
         logger.error("Telegram reset error for #%d: %s", item_id, e)
-        return web.json_response({"error": str(e)}, status=400)
+        return web.json_response({"error": _parse_lzt_error(e)}, status=400)
 
 
 async def get_balance(request: web.Request) -> web.Response:
