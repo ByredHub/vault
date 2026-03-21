@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="description" content="VAULT — покупка аккаунтов Steam, Fortnite, Genshin и других" />
+  <title>VAULT</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <div id="app">
+    <header class="app-header">
+      <div class="header-top">
+        <div class="header-logo">V</div>
+        <span class="header-title">VAULT</span>
+        <div class="header-right">
+          <div class="balance-pill">
+            <span class="balance-dot"></span>
+            $1,250
+          </div>
+          <button class="header-avatar" id="profile-btn" title="Профиль">
+            <i class="bi bi-person-fill"></i>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <div class="page-container">
+      <!-- Catalog -->
+      <div class="page active" id="page-catalog">
+        <div class="hero" id="hero-banner">
+          <div class="hero-inner">
+            <div class="hero-text">
+              <div class="hero-title">Магазин аккаунтов</div>
+              <div class="hero-desc">Моментальная покупка с гарантией.<br>Оплата через ⭐ Telegram Stars</div>
+            </div>
+            <div class="hero-stats">
+              <div class="hero-stat">
+                <div class="hero-stat-val">2,400+</div>
+                <div class="hero-stat-label">Аккаунтов</div>
+              </div>
+              <div class="hero-stat">
+                <div class="hero-stat-val">1,247</div>
+                <div class="hero-stat-label">Клиентов</div>
+              </div>
+              <div class="hero-stat">
+                <div class="hero-stat-val">99%</div>
+                <div class="hero-stat-label">Успех</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="search-row">
+          <div class="search-bar">
+            <i class="bi bi-search search-icon"></i>
+            <input type="text" placeholder="Найти аккаунт..." id="catalog-search" />
+          </div>
+          <button class="filter-toggle" id="filter-toggle" title="Фильтры">
+            <i class="bi bi-funnel"></i>
+          </button>
+        </div>
+
+        <div class="filter-panel" id="filter-panel">
+          <div class="filter-section">
+            <div class="filter-label">Сортировка</div>
+            <div class="filter-chips">
+              <button class="filter-chip active" data-sort="default"><i class="bi bi-arrow-down-up"></i> По умолчанию</button>
+              <button class="filter-chip" data-sort="price_asc"><i class="bi bi-sort-numeric-up"></i> Дешевле</button>
+              <button class="filter-chip" data-sort="price_desc"><i class="bi bi-sort-numeric-down-alt"></i> Дороже</button>
+            </div>
+          </div>
+          <div class="filter-section">
+            <div class="filter-label">Цена, ₽</div>
+            <div class="filter-price-row">
+              <input type="number" class="filter-input" id="price-min" placeholder="от 0" min="0" />
+              <span class="filter-dash">—</span>
+              <input type="number" class="filter-input" id="price-max" placeholder="до ∞" min="0" />
+              <button class="filter-apply-btn" id="filter-apply"><i class="bi bi-check-lg"></i></button>
+            </div>
+          </div>
+        </div>
+
+        <div id="categories-container"></div>
+
+        <div class="section-head">
+          <h2 class="section-title" id="catalog-title">Steam</h2>
+          <span class="section-count" id="catalog-count"></span>
+        </div>
+        <div id="items-container"><div class="spin"></div></div>
+      </div>
+
+      <!-- Orders -->
+      <div class="page" id="page-orders">
+        <div class="section-head" style="margin-bottom:14px">
+          <h2 class="section-title"><i class="bi bi-bag-check" style="opacity:.5;margin-right:6px"></i>Мои заказы</h2>
+        </div>
+        <div id="orders-container"><div class="spin"></div></div>
+      </div>
+
+      <!-- Admin -->
+      <div class="page" id="page-admin">
+        <div class="section-head" style="margin-bottom:12px">
+          <h2 class="section-title"><i class="bi bi-sliders" style="opacity:.5;margin-right:6px"></i>Панель управления</h2>
+        </div>
+        <div id="admin-stats-container"></div>
+
+        <div class="admin-actions" id="admin-actions"></div>
+
+        <div class="admin-tabs" id="admin-tabs">
+          <button class="atab active" data-atab="orders"><i class="bi bi-receipt"></i> Заказы</button>
+          <button class="atab" data-atab="users"><i class="bi bi-people"></i> Юзеры</button>
+          <button class="atab" data-atab="items"><i class="bi bi-box-seam"></i> Товары</button>
+        </div>
+        <div id="admin-content"></div>
+      </div>
+
+      <!-- Profile -->
+      <div class="page" id="page-profile">
+        <div id="profile-container"></div>
+      </div>
+    </div>
+
+    <nav class="bottom-nav">
+      <button class="bnav-tab active" data-page="catalog">
+        <i class="bi bi-grid-3x3-gap"></i>
+        <span>Каталог</span>
+      </button>
+      <button class="bnav-tab" data-page="orders">
+        <i class="bi bi-bag-check"></i>
+        <span>Заказы</span>
+      </button>
+      <button class="bnav-tab" data-page="admin" id="admin-tab" style="display:none">
+        <i class="bi bi-sliders"></i>
+        <span>Админ</span>
+      </button>
+      <button class="bnav-tab" data-page="profile">
+        <i class="bi bi-person-circle"></i>
+        <span>Профиль</span>
+      </button>
+    </nav>
+  </div>
+
+  <div id="modal-root"></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="shine" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#fff;stop-opacity:0.3" />
+      <stop offset="100%" style="stop-color:#fff;stop-opacity:0" />
+    </linearGradient>
+  </defs>
+  <!-- Background circle -->
+  <circle cx="100" cy="100" r="90" fill="url(#bg)"/>
+  <circle cx="100" cy="100" r="90" fill="url(#shine)" opacity="0.3"/>
+  <!-- Shopping bag icon -->
+  <path d="M70 85 L70 140 Q70 150 80 150 L120 150 Q130 150 130 140 L130 85 Z" fill="white" opacity="0.9"/>
+  <path d="M82 85 L82 75 Q82 60 100 60 Q118 60 118 75 L118 85" stroke="white" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <!-- Price tag -->
+  <circle cx="100" cy="115" r="8" fill="#6366f1"/>
+  <path d="M100 107 L100 123" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M92 115 L108 115" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Sparkle -->
+  <path d="M145 55 L148 65 L158 68 L148 71 L145 81 L142 71 L132 68 L142 65 Z" fill="#fbbf24" opacity="0.9"/>
+  <path d="M55 45 L57 51 L63 53 L57 55 L55 61 L53 55 L47 53 L53 51 Z" fill="#34d399" opacity="0.8"/>
+</svg>
