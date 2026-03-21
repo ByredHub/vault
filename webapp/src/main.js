@@ -451,6 +451,18 @@ async function showOrderDetail(orderId) {
       ` : order.status === 'completed' ? '<div class="order-no-creds">Данные аккаунта недоступны</div>' : '<div class="order-no-creds">Заказ ещё не завершён</div>'}
 
       ${order.error_message ? `<div class="order-error">⚠️ ${esc(order.error_message)}</div>` : ''}
+
+      ${isTelegram && order.status === 'completed' && order.lzt_item_id ? `
+        <div class="order-creds-title" style="margin-top:16px">📲 Действия с аккаунтом</div>
+        <div class="order-tg-actions">
+          <button class="order-tg-btn tg-btn-code" data-item="${order.lzt_item_id}">
+            <i class="bi bi-key"></i> Получить код
+          </button>
+          <button class="order-tg-btn tg-btn-reset" data-item="${order.lzt_item_id}">
+            <i class="bi bi-arrow-counterclockwise"></i> Сбросить авторизации
+          </button>
+        </div>
+      ` : ''}
     `;
 
     // Copy buttons
@@ -479,6 +491,43 @@ async function showOrderDetail(orderId) {
           btn.innerHTML = '<i class="bi bi-arrows-angle-expand"></i>';
         }
       });
+    });
+
+    // Telegram action buttons
+    panel.querySelector('.tg-btn-code')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      const itemId = btn.dataset.item;
+      btn.disabled = true;
+      btn.innerHTML = '<div class="spin" style="width:14px;height:14px;margin:0"></div> Запрос...';
+      haptic('medium');
+      try {
+        const res = await fetch(`/api/telegram-code/${itemId}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Ошибка');
+        toast('📲 Код отправлен в Telegram!');
+      } catch (err) {
+        toast('❌ ' + err.message);
+      }
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-key"></i> Получить код';
+    });
+
+    panel.querySelector('.tg-btn-reset')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      const itemId = btn.dataset.item;
+      btn.disabled = true;
+      btn.innerHTML = '<div class="spin" style="width:14px;height:14px;margin:0"></div> Сброс...';
+      haptic('heavy');
+      try {
+        const res = await fetch(`/api/telegram-reset/${itemId}`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Ошибка');
+        toast('🔄 Другие авторизации сброшены!');
+      } catch (err) {
+        toast('❌ ' + err.message);
+      }
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-arrow-counterclockwise"></i> Сбросить авторизации';
     });
   } catch (err) {
     root.querySelector('.pay-name').textContent = err.message;

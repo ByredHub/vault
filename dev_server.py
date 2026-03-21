@@ -309,6 +309,28 @@ async def get_order_detail(request: web.Request) -> web.Response:
     return web.json_response({"order": result})
 
 
+async def telegram_login_code(request: web.Request) -> web.Response:
+    """Request Telegram login code for a purchased account."""
+    item_id = int(request.match_info["item_id"])
+    try:
+        result = await lzt_api._request("GET", f"/{item_id}/telegram-login-code")
+        return web.json_response(result)
+    except Exception as e:
+        logger.error("Telegram code error for #%d: %s", item_id, e)
+        return web.json_response({"error": str(e)}, status=400)
+
+
+async def telegram_reset_auth(request: web.Request) -> web.Response:
+    """Reset other Telegram authorizations for a purchased account."""
+    item_id = int(request.match_info["item_id"])
+    try:
+        result = await lzt_api._request("POST", f"/{item_id}/telegram-reset-authorizations")
+        return web.json_response(result)
+    except Exception as e:
+        logger.error("Telegram reset error for #%d: %s", item_id, e)
+        return web.json_response({"error": str(e)}, status=400)
+
+
 async def get_balance(request: web.Request) -> web.Response:
     """Get LZT balance (regular + purchase)."""
     try:
@@ -538,6 +560,8 @@ def create_app() -> web.Application:
     app.router.add_post("/api/purchase", purchase_item)
     app.router.add_get("/api/orders/my", get_orders)
     app.router.add_get("/api/orders/{order_id}", get_order_detail)
+    app.router.add_get("/api/telegram-code/{item_id}", telegram_login_code)
+    app.router.add_post("/api/telegram-reset/{item_id}", telegram_reset_auth)
     app.router.add_get("/api/balance", get_balance)
     app.router.add_get("/api/admin/stats", admin_stats)
     app.router.add_get("/api/admin/orders", admin_orders)
