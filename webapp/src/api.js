@@ -114,8 +114,7 @@ export function blockUser(userId, blocked) {
   });
 }
 
-export async function purchaseItem(itemId, onProgress) {
-  // Get user_id from Telegram or API
+export async function purchaseItem(itemId) {
   let userId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
   if (!userId) {
     try {
@@ -134,51 +133,7 @@ export async function purchaseItem(itemId, onProgress) {
     body: JSON.stringify({ item_id: itemId, user_id: userId }),
   });
 
-  // Parse NDJSON lines from response
-  function parseLine(line, result) {
-    if (!line.trim()) return result;
-    try {
-      const data = JSON.parse(line);
-      if (data.step === 'result') return data;
-      if (data.step === 'error') throw new Error(data.message);
-      if (data.step && onProgress) onProgress(data);
-    } catch (e) {
-      if (e.message && !e.message.includes('JSON')) throw e;
-    }
-    return result;
-  }
-
-  let finalResult = null;
-
-  // Try streaming first, fallback to full text read
-  if (res.body && res.body.getReader) {
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-      for (const line of lines) {
-        finalResult = parseLine(line, finalResult);
-      }
-    }
-    // Process any remaining buffer
-    if (buffer.trim()) {
-      finalResult = parseLine(buffer, finalResult);
-    }
-  } else {
-    // Fallback: read entire response as text
-    const text = await res.text();
-    const lines = text.split('\n');
-    for (const line of lines) {
-      finalResult = parseLine(line, finalResult);
-    }
-  }
-
-  if (!finalResult) throw new Error('Не получен результат покупки');
-  return finalResult;
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Ошибка покупки');
+  return data;
 }

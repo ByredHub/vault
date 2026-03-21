@@ -234,22 +234,7 @@ async def purchase_item(request: web.Request) -> web.Response:
 
         # 5. Purchase on LZT via fast-buy (includes account validation!)
         logger.info("Starting fast-buy for item #%d (price: %.2f)...", item_id, original_price)
-
-        # Use StreamResponse to send real-time progress
-        resp = web.StreamResponse(
-            status=200,
-            reason="OK",
-            headers={"Content-Type": "application/x-ndjson", "Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-        )
-        await resp.prepare(request)
-
-        async def send_step(step: str, message: str) -> None:
-            line = json.dumps({"step": step, "message": message}, ensure_ascii=False)
-            await resp.write((line + "\n").encode())
-
         try:
-            await send_step("check", "Проверяем аккаунт...")
-            await send_step("confirm", "Оформляем покупку...")
             result = await lzt_api.fast_buy(item_id, original_price)
         except Exception as buy_err:
             logger.error("Fast-buy failed for item #%d: %s", item_id, buy_err)
@@ -258,9 +243,10 @@ async def purchase_item(request: web.Request) -> web.Response:
             logger.info("Refunded %d Stars to user %d", stars_needed, user_id)
             await update_order_status(order_id, "error", error_message=str(buy_err))
             CATALOG_CACHE.clear()
-            await send_step("error", _parse_lzt_error(buy_err))
-            await resp.write_eof()
-            return resp
+            return web.json_response(
+                {"error": _parse_lzt_error(buy_err), "refunded": True},
+                status=400,
+            )
 
         # 6. Extract account data
         purchased_item = result.get("item", {})
@@ -289,18 +275,13 @@ async def purchase_item(request: web.Request) -> web.Response:
         logger.info("Order #%d completed! Item #%d purchased.", order_id, item_id)
         CATALOG_CACHE.clear()
 
-        await send_step("done", "Готово!")
-        final = json.dumps({
-            "step": "result",
+        return web.json_response({
             "status": "completed",
             "order_id": order_id,
             "sell_price": sell_price,
             "original_price": original_price,
             "account_data": account_data,
-        }, ensure_ascii=False)
-        await resp.write((final + "\n").encode())
-        await resp.write_eof()
-        return resp
+        })
 
     except Exception as e:
         logger.error("Purchase error for item #%s: %s", item_id, e, exc_info=True)

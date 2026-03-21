@@ -272,18 +272,17 @@ function showPayment(itemId, price, title) {
     btn.innerHTML = '<div class="spin" style="width:16px;height:16px;margin:0"></div> Покупаем...';
     haptic('heavy');
 
-    const stepIcons = {
-      reserve: '🔒',
-      check: '🔍',
-      confirm: '💰',
-      done: '✨',
-    };
+    // Simulated progress (works on all devices)
+    const t1 = setTimeout(() => {
+      btn.innerHTML = '<div class="spin" style="width:14px;height:14px;margin:0"></div> 🔍 Проверяем аккаунт...';
+    }, 2000);
+    const t2 = setTimeout(() => {
+      btn.innerHTML = '<div class="spin" style="width:14px;height:14px;margin:0"></div> 💰 Оформляем покупку...';
+    }, 5000);
 
     try {
-      const result = await purchaseItem(itemId, (progress) => {
-        const icon = stepIcons[progress.step] || '⏳';
-        btn.innerHTML = `<div class="spin" style="width:14px;height:14px;margin:0"></div> ${icon} ${progress.message}`;
-      });
+      const result = await purchaseItem(itemId);
+      clearTimeout(t1); clearTimeout(t2);
 
       root.innerHTML = '';
       if (result.status === 'completed') {
@@ -297,9 +296,9 @@ function showPayment(itemId, price, title) {
         toast('Статус: ' + (result.status || 'unknown'));
       }
     } catch (err) {
+      clearTimeout(t1); clearTimeout(t2);
       const msg = err.message || 'Неизвестная ошибка';
       haptic('error');
-      // Show error in the modal panel itself
       if (panel) {
         panel.innerHTML = `
           <div class="modal-grip"></div>
@@ -309,7 +308,6 @@ function showPayment(itemId, price, title) {
             <div style="font-size:.75rem;color:var(--t3);line-height:1.5;margin-bottom:16px">${esc(msg)}</div>
             <div style="font-size:.625rem;color:var(--t4)">⭐ Stars возвращены на баланс</div>
           </div>`;
-        // Auto-close after 4 seconds
         setTimeout(() => { root.innerHTML = ''; }, 4000);
       } else {
         toast('❌ ' + msg);
