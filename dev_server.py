@@ -181,9 +181,15 @@ async def purchase_item(request: web.Request) -> web.Response:
         )
         logger.info("Order #%d created for item #%d", order_id, item_id)
 
-        # 4. Safe purchase on LZT (reserve -> check -> confirm)
-        logger.info("Starting safe purchase flow...")
-        result = await lzt_api.safe_purchase(item_id, original_price)
+        # 4. Purchase on LZT via fast-buy (single step, works for all categories)
+        logger.info("Starting fast-buy for item #%d (original price: %.2f)...", item_id, original_price)
+        try:
+            result = await lzt_api.fast_buy(item_id, original_price)
+        except Exception as buy_err:
+            logger.error("Fast-buy failed for item #%d: %s", item_id, buy_err)
+            await update_order_status(order_id, "error", error_message=str(buy_err))
+            CATALOG_CACHE.clear()
+            return web.json_response({"error": f"Ошибка покупки: {buy_err}"}, status=400)
 
         # 5. Extract account data
         purchased_item = result.get("item", {})
@@ -213,9 +219,20 @@ async def purchase_item(request: web.Request) -> web.Response:
         })
 
     except Exception as e:
-        logger.error("Purchase error: %s", e)
-        if 'order_id' in dir():
-            await update_order_status(order_id, "error", error_message=str(e))
+        logger.error("Purchase error for item #%s: %s", item_id, e, exc_info=True)
+        order_id_local = locals().get("order_id")
+        if order_id_local:
+            try:
+                await update_order_status(order_id_local, "error", error_message=str(e))
+            except Exception:
+                pass
+
+        # PurchaseError = expected failure (sold, validation failed, etc)
+        from bot.services.lzt_api import PurchaseError
+        if isinstance(e, PurchaseError):
+            CATALOG_CACHE.clear()
+            return web.json_response({"error": str(e)}, status=400)
+
         return web.json_response({"error": str(e)}, status=500)
 
 
