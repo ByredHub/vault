@@ -409,14 +409,6 @@ async def admin_users(request: web.Request) -> web.Response:
     return web.json_response({"users": users})
 
 
-async def user_balance(request: web.Request) -> web.Response:
-    """Get current user's Stars balance."""
-    user_id = DEV_USER["id"]
-    # In production, extract user_id from Telegram init data
-    balance = await get_user_balance(user_id)
-    return web.json_response({"stars_balance": balance})
-
-
 async def get_me(request: web.Request) -> web.Response:
     """Get current user info + admin check."""
     user_id = None
