@@ -231,49 +231,54 @@ function showItemDetail(item) {
   const root = document.getElementById('modal-root');
   const cat = CATEGORIES.find(c => c.slug === selectedCategory);
 
-  // Build info rows
-  const rows = [];
-  if (item.country) rows.push(['🌍 Страна', item.country]);
-  if (item.phone) rows.push(['📱 Телефон', item.phone]);
-  if (item.dc) rows.push(['🏠 Дата-центр', `DC${item.dc}`]);
-  if (item.premium) rows.push(['⭐ Premium', 'Да']);
-  if (item.login) rows.push(['👤 Логин', item.login]);
+  // Clean description — remove BBCode leftovers, :emoji:, URLs
+  let desc = (item.desc || '')
+    .replace(/:[a-zA-Z0-9_]+:/g, '')  // :righthand: etc
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/ЖМИ СЮДА/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  if (desc.length < 5) desc = '';
+
+  // Build info chips
+  const chips = [];
+  if (item.country) chips.push({ icon: 'bi-globe-americas', label: item.country });
+  if (item.dc) chips.push({ icon: 'bi-hdd-rack', label: `DC${item.dc}` });
+  if (item.premium) chips.push({ icon: 'bi-star-fill', label: 'Premium' });
+  if (item.phone) chips.push({ icon: 'bi-phone', label: item.phone });
 
   root.innerHTML = `
     <div class="modal-bg" id="modal-bg">
       <div class="modal-panel">
         <div class="modal-grip"></div>
 
-        <div class="pay-header" style="background:${cat?.gradient || 'var(--raised-2)'}">
-          <div style="display:flex;align-items:center;gap:8px">
-            ${getCategoryIcon(selectedCategory, 22)}
-            <div class="pay-title" style="font-size:.8125rem">${esc(cat?.name || 'Аккаунт')}</div>
+        <div style="padding:20px 16px 0">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+            <div style="width:36px;height:36px;border-radius:10px;background:${cat?.gradient || 'var(--raised-2)'};display:flex;align-items:center;justify-content:center">
+              ${getCategoryIcon(selectedCategory, 18)}
+            </div>
+            <div>
+              <div style="font-size:.6875rem;color:var(--t4);text-transform:uppercase;letter-spacing:.5px">${esc(cat?.name || 'Аккаунт')} · #${item.id}</div>
+            </div>
           </div>
-          <div class="pay-name" style="margin-top:4px;font-size:.75rem;opacity:.7">#${item.id}</div>
-        </div>
 
-        <div style="padding:16px">
-          <div style="font-size:.9375rem;font-weight:700;color:var(--t1);margin-bottom:12px;line-height:1.4">${esc(item.title)}</div>
+          <div style="font-size:.9375rem;font-weight:700;color:var(--t1);line-height:1.4;margin-bottom:12px">${esc(item.title)}</div>
 
-          ${item.desc ? `<div style="font-size:.75rem;color:var(--t3);line-height:1.5;margin-bottom:14px;padding:10px;background:var(--bg2);border-radius:10px">${esc(item.desc)}</div>` : ''}
+          ${desc ? `<div style="font-size:.75rem;color:var(--t3);line-height:1.5;margin-bottom:14px">${esc(desc)}</div>` : ''}
 
-          ${rows.length ? `
-            <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
-              ${rows.map(([label, value]) => `
-                <div class="pay-detail">
-                  <span class="pay-detail-label">${label}</span>
-                  <span class="pay-detail-value">${esc(value)}</span>
-                </div>
-              `).join('')}
+          ${chips.length ? `
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">
+              ${chips.map(c => `<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:var(--bg2);border-radius:8px;font-size:.6875rem;color:var(--t2)"><i class="bi ${c.icon}" style="font-size:.625rem;opacity:.6"></i>${esc(c.label)}</span>`).join('')}
             </div>
           ` : ''}
 
-          <div class="pay-amount" style="margin-bottom:16px">
-            <div class="pay-amount-value">⭐ ${fmtPrice(item.price)}</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-top:1px solid var(--border);margin-bottom:16px">
+            <span style="font-size:.75rem;color:var(--t3)">Стоимость</span>
+            <span style="font-size:1.125rem;font-weight:800;color:var(--accent)">⭐ ${fmtPrice(item.price)}</span>
           </div>
 
-          <button class="btn-cta cta-stars" id="detail-buy-btn">
-            <i class="bi bi-bag-plus"></i> Купить за ⭐ ${fmtPrice(item.price)}
+          <button class="btn-cta cta-stars" id="detail-buy-btn" style="margin-bottom:16px">
+            Купить за ⭐ ${fmtPrice(item.price)}
           </button>
         </div>
       </div>
