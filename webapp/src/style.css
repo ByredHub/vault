@@ -569,24 +569,42 @@ a{text-decoration:none;color:inherit}
 .order-tg-btn:disabled{opacity:.5;pointer-events:none}
 
 /* Telegram code modal */
-.tg-code-display{
-  text-align:center;margin:16px 0;
+.code-modal-header{
+  text-align:center;margin-bottom:16px;
 }
-.tg-code-item{margin-bottom:14px}
-.tg-code-phone{
-  font-size:.6875rem;font-weight:600;color:var(--t3);margin-bottom:2px;
+.code-modal-icon{
+  width:48px;height:48px;border-radius:50%;margin:0 auto 10px;
+  background:linear-gradient(135deg,rgba(34,197,94,.15),rgba(34,197,94,.05));
+  display:flex;align-items:center;justify-content:center;
+  font-size:1.25rem;color:#22c55e;
+}
+.code-modal-title{
+  font-size:.9375rem;font-weight:700;color:var(--t1);
+}
+.code-modal-phone{
+  font-size:.75rem;color:var(--accent);font-weight:600;
+  font-family:var(--mono);margin-top:4px;
+}
+.tg-code-display{
+  margin:0 0 12px;max-height:300px;overflow-y:auto;
+}
+.tg-code-item{margin-bottom:10px}
+.tg-code-latest .tg-code-row{
+  border-color:rgba(34,197,94,.3);
+  background:rgba(34,197,94,.06);
 }
 .tg-code-time{
-  font-size:.625rem;color:var(--t4);margin-bottom:6px;
+  font-size:.625rem;color:var(--t4);margin-bottom:4px;padding-left:2px;
 }
 .tg-code-row{
   display:flex;align-items:center;gap:6px;
   background:var(--raised-2);border:1px solid var(--sep);
   border-radius:var(--r-sm);padding:12px 14px;
+  transition:border-color .2s;
 }
 .tg-code-digits{
-  flex:1;font-family:var(--mono);font-size:1.5rem;
-  font-weight:800;letter-spacing:6px;color:#22c55e;text-align:left;
+  flex:1;font-family:var(--mono);font-size:1.375rem;
+  font-weight:800;letter-spacing:6px;color:#22c55e;
 }
 .tg-code-copy{
   width:34px;height:34px;border-radius:8px;flex-shrink:0;
@@ -596,10 +614,15 @@ a{text-decoration:none;color:inherit}
 }
 .tg-code-copy:hover{background:rgba(34,197,94,.2)}
 .tg-code-copy:active{transform:scale(.85)}
+.tg-code-empty{
+  text-align:center;padding:20px;font-size:.75rem;color:var(--t4);
+  display:flex;align-items:center;justify-content:center;gap:6px;
+}
+.tg-btn-refresh{margin-top:4px}
 .tg-code-note{
   text-align:center;font-size:.625rem;color:var(--t4);
   display:flex;align-items:center;justify-content:center;gap:4px;
-  margin-top:8px;
+  margin-top:4px;padding-bottom:4px;
 }
 .order-no-creds{
   text-align:center;padding:20px;font-size:.75rem;color:var(--t4);

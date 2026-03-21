@@ -512,7 +512,7 @@ async function showOrderDetail(orderId) {
           throw new Error(errMsg || 'Ошибка получения кода');
         }
         // Show codes in modal
-        showTelegramCodeModal(data);
+        showTelegramCodeModal(data, itemId);
       } catch (err) {
         toast('❌ ' + err.message);
       }
@@ -548,24 +548,17 @@ async function showOrderDetail(orderId) {
   }
 }
 
-function showTelegramCodeModal(data) {
+function showTelegramCodeModal(data, itemId) {
   const root = document.getElementById('modal-root');
 
-  // Parse codes from LZT response — could be various formats
+  // Parse codes from LZT response
   let codes = [];
-  if (data.codes) {
-    codes = Array.isArray(data.codes) ? data.codes : [data.codes];
-  } else if (data.loginCodes) {
-    codes = Array.isArray(data.loginCodes) ? data.loginCodes : [data.loginCodes];
-  } else if (data.code) {
-    codes = [{ code: data.code }];
-  } else if (data.item?.loginCodes) {
-    codes = data.item.loginCodes;
-  }
+  if (data.codes) codes = Array.isArray(data.codes) ? data.codes : [data.codes];
+  else if (data.loginCodes) codes = Array.isArray(data.loginCodes) ? data.loginCodes : [data.loginCodes];
+  else if (data.code) codes = [{ code: data.code }];
+  else if (data.item?.loginCodes) codes = data.item.loginCodes;
 
-  // If we got a raw response with no recognizable codes, try to find any code-like field
   if (!codes.length) {
-    // Look for any 5-digit numbers in the response
     const json = JSON.stringify(data);
     const found = json.match(/\b\d{5}\b/g);
     if (found) codes = found.map(c => ({ code: c }));
@@ -577,25 +570,33 @@ function showTelegramCodeModal(data) {
     <div class="modal-bg" id="code-modal-bg">
       <div class="modal-panel">
         <div class="modal-grip"></div>
-        <div class="pay-header">
-          <div class="pay-title">📲 Код для входа в Telegram</div>
-          ${phone ? `<div class="pay-name">Для номера +${phone}</div>` : ''}
+
+        <div class="code-modal-header">
+          <div class="code-modal-icon"><i class="bi bi-shield-lock"></i></div>
+          <div class="code-modal-title">Код подтверждения</div>
+          ${phone ? `<div class="code-modal-phone">+${esc(String(phone))}</div>` : ''}
         </div>
 
-        <div class="tg-code-display">
+        <div class="tg-code-display" id="tg-codes-list">
           ${codes.length ? codes.map((c, i) => `
-            <div class="tg-code-item">
-              ${c.date || c.time ? `<div class="tg-code-time">${esc(String(c.date || c.time || ''))}</div>` : i === 0 ? '<div class="tg-code-time">Только что</div>' : ''}
+            <div class="tg-code-item${i === 0 ? ' tg-code-latest' : ''}">
+              <div class="tg-code-time">${c.date || c.time ? esc(String(c.date || c.time)) : i === 0 ? 'Только что' : ''}</div>
               <div class="tg-code-row">
                 <div class="tg-code-digits">${esc(String(c.code || c))}</div>
                 <button class="tg-code-copy" data-code="${esc(String(c.code || c))}"><i class="bi bi-copy"></i></button>
               </div>
             </div>
-          `).join('') : '<div class="tg-code-time">Код не получен — попробуйте ещё раз</div>'}
+          `).join('') : '<div class="tg-code-empty"><i class="bi bi-exclamation-triangle"></i> Код не получен</div>'}
         </div>
 
+        ${itemId ? `
+          <button class="order-tg-btn tg-btn-code tg-btn-refresh" id="tg-refresh-code" data-item="${itemId}" style="width:100%;margin-bottom:12px">
+            <i class="bi bi-arrow-repeat"></i> Получить новый код
+          </button>
+        ` : ''}
+
         <div class="tg-code-note">
-          <i class="bi bi-info-circle"></i> Код действует несколько минут
+          <i class="bi bi-info-circle"></i> Код действителен несколько минут. Используйте последний.
         </div>
       </div>
     </div>`;
@@ -610,6 +611,39 @@ function showTelegramCodeModal(data) {
       toast('📋 Код скопирован!');
       haptic('medium');
     });
+  });
+
+  // Refresh button
+  document.getElementById('tg-refresh-code')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const id = btn.dataset.item;
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spin" style="width:14px;height:14px;margin:0"></div> Запрос...';
+    haptic('medium');
+    try {
+      const res = await fetch(`/api/telegram-code/${id}`);
+      const newData = await res.json();
+      if (!res.ok) {
+        const errMsg = newData.error || '';
+        if (errMsg.includes('недействительна') || errMsg.includes('заблокирован')) {
+          toast('❌ Сессия недействительна — аккаунт заблокирован');
+        } else if (errMsg.includes('429') || errMsg.includes('подождите') || errMsg.includes('Too many')) {
+          toast('⏳ Слишком часто. Подождите пару минут.');
+        } else {
+          toast('❌ ' + (errMsg || 'Ошибка'));
+        }
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Получить новый код';
+        return;
+      }
+      // Re-render modal with new data
+      showTelegramCodeModal(newData, id);
+      toast('✅ Новый код получен!');
+    } catch (err) {
+      toast('❌ ' + err.message);
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Получить новый код';
+    }
   });
 }
 
