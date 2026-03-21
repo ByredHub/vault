@@ -467,6 +467,43 @@ a{text-decoration:none;color:inherit}
 .atab:hover{color:var(--t2)}
 .atab.active{background:var(--raised-3);color:var(--t1)}
 
+/* Admin stats cards */
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px}
+.scard{
+  background:var(--raised);border-radius:var(--r-sm);
+  padding:12px 10px;position:relative;overflow:hidden;
+}
+.scard::before{
+  content:'';position:absolute;top:0;left:0;width:3px;height:100%;
+  border-radius:3px 0 0 3px;
+}
+.scard.sc-green::before{background:var(--green)}
+.scard.sc-blue::before{background:var(--accent)}
+.scard.sc-amber::before{background:var(--amber)}
+.scard.sc-red::before{background:var(--red)}
+.scard-label{font-size:.625rem;color:var(--t3);font-weight:600;text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px}
+.scard-value{font-family:var(--mono);font-size:1rem;font-weight:800;letter-spacing:-.02em}
+.scard-sub{font-size:.5625rem;color:var(--t4);font-family:var(--mono);margin-top:2px}
+
+/* Admin balance section */
+.admin-balance-section{margin-top:6px}
+.admin-balance-title{
+  font-size:.6875rem;font-weight:700;color:var(--t3);
+  margin-bottom:8px;padding-left:2px;
+}
+
+/* Deposit form */
+.deposit-form{display:flex;flex-direction:column;gap:10px;padding:0 4px}
+.deposit-input{
+  width:100%;padding:12px 14px;
+  background:var(--raised-2);border:1px solid var(--sep);
+  border-radius:var(--r-sm);color:var(--t1);
+  font-family:var(--mono);font-size:.8125rem;
+  outline:none;transition:border-color .2s;
+}
+.deposit-input:focus{border-color:var(--accent)}
+.deposit-input::placeholder{color:var(--t4)}
+
 /* Admin row */
 .arow{
   display:flex;align-items:center;gap:8px;

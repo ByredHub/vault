@@ -364,7 +364,7 @@ async function renderAdmin() {
   const contentEl = document.getElementById('admin-content');
   const s = await getAdminStats().catch(() => ({}));
 
-  // Stats
+  // Stats with two balance sections
   statsEl.innerHTML = `
     <div class="stats-grid">
       <div class="scard sc-green"><div class="scard-label">Профит</div><div class="scard-value">${fmtPrice(s.total_profit)} ₽</div></div>
@@ -374,27 +374,45 @@ async function renderAdmin() {
       <div class="scard sc-amber"><div class="scard-label">Заказы</div><div class="scard-value">${s.completed_orders}/${s.total_orders}</div></div>
       <div class="scard"><div class="scard-label">Пользователи</div><div class="scard-value">${s.total_users}</div></div>
     </div>
-    <div class="stats-grid">
-      <div class="scard sc-green"><div class="scard-label">Баланс LZT</div><div class="scard-value">${fmtPrice(s.lzt_balance)} ₽</div></div>
-      <div class="scard sc-blue"><div class="scard-label">Баланс покупок</div><div class="scard-value">${fmtPrice(s.lzt_purchase_balance)} ₽</div></div>
-    </div>
-    <div class="stats-grid">
-      <div class="scard sc-amber"><div class="scard-label">Сегодня</div><div class="scard-value">${s.today_orders} · ${fmtPrice(s.today_profit)}₽</div></div>
-      <div class="scard"><div class="scard-label">Холд</div><div class="scard-value">${fmtPrice(s.lzt_hold || 0)} ₽</div></div>
+
+    <div class="admin-balance-section">
+      <div class="admin-balance-title">🏦 Балансы</div>
+      <div class="stats-grid">
+        <div class="scard sc-green">
+          <div class="scard-label">💰 Маркет</div>
+          <div class="scard-value">${fmtPrice(s.lzt_balance)} ₽</div>
+          <div class="scard-sub">Покупки: ${fmtPrice(s.lzt_purchase_balance)} ₽</div>
+        </div>
+        <div class="scard sc-blue">
+          <div class="scard-label">⭐ Stars (юзеры)</div>
+          <div class="scard-value">${fmtPrice(s.total_stars || 0)} ⭐</div>
+          <div class="scard-sub">~${fmtPrice(Math.round((s.total_stars || 0) * 1.6))} ₽</div>
+        </div>
+      </div>
+      <div class="stats-grid">
+        <div class="scard sc-amber"><div class="scard-label">Сегодня</div><div class="scard-value">${s.today_orders} · ${fmtPrice(s.today_profit)}₽</div></div>
+        <div class="scard"><div class="scard-label">Холд</div><div class="scard-value">${fmtPrice(s.lzt_hold || 0)} ₽</div></div>
+      </div>
     </div>`;
 
-  // Quick actions
+  // Quick actions with working deposit
   actionsEl.innerHTML = `
-    <button class="admin-act act-blue" data-action="add-item"><i class="bi bi-plus-circle"></i>Добавить товар</button>
+    <button class="admin-act act-blue" id="admin-deposit-btn"><i class="bi bi-plus-circle"></i>Пополнить Stars</button>
     <button class="admin-act act-green" data-action="sync"><i class="bi bi-arrow-repeat"></i>Синхронизация</button>
     <button class="admin-act act-amber" data-action="export"><i class="bi bi-download"></i>Экспорт</button>
     <button class="admin-act act-red" data-action="cache"><i class="bi bi-trash3"></i>Очистить кэш</button>
   `;
 
+  // Deposit button
+  document.getElementById('admin-deposit-btn')?.addEventListener('click', () => {
+    haptic('medium');
+    showDepositModal();
+  });
+
   actionsEl.querySelectorAll('[data-action]').forEach(btn => {
     btn.addEventListener('click', () => {
       haptic('medium');
-      const labels = { 'add-item': '➕ Открываю форму добавления...', sync: '🔄 Синхронизация запущена', export: '📦 Экспорт данных...', cache: '🗑️ Кэш очищен!' };
+      const labels = { sync: '🔄 Синхронизация запущена', export: '📦 Экспорт данных...', cache: '🗑️ Кэш очищен!' };
       toast(labels[btn.dataset.action] || 'Действие');
     });
   });
@@ -410,6 +428,58 @@ async function renderAdmin() {
   });
 
   renderAdminContent();
+}
+
+function showDepositModal() {
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `
+    <div class="modal-bg" id="modal-bg">
+      <div class="modal-panel">
+        <div class="modal-grip"></div>
+        <div class="pay-header">
+          <div class="pay-title">⭐ Пополнить Stars</div>
+          <div class="pay-name">Зачислить Stars на баланс пользователя</div>
+        </div>
+        <div class="deposit-form">
+          <input type="number" id="deposit-uid" placeholder="User ID" class="deposit-input" />
+          <input type="number" id="deposit-amount" placeholder="Кол-во Stars" class="deposit-input" min="1" />
+          <button class="btn-cta cta-stars" id="deposit-submit">Зачислить ⭐</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('modal-bg')?.addEventListener('click', e => {
+    if (e.target === e.currentTarget) { root.innerHTML = ''; haptic(); }
+  });
+
+  document.getElementById('deposit-submit')?.addEventListener('click', async () => {
+    const uid = parseInt(document.getElementById('deposit-uid')?.value);
+    const amount = parseInt(document.getElementById('deposit-amount')?.value);
+    if (!uid || !amount || amount <= 0) {
+      toast('❌ Укажите User ID и сумму');
+      return;
+    }
+    const btn = document.getElementById('deposit-submit');
+    btn.disabled = true;
+    btn.textContent = 'Зачисляем...';
+    try {
+      const res = await fetch('/api/admin/deposit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: uid, amount }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Ошибка');
+      root.innerHTML = '';
+      toast(`✅ Зачислено ${amount} ⭐ → User ${uid} (баланс: ${data.new_balance}⭐)`);
+      renderAdmin(); // Refresh stats
+    } catch (err) {
+      toast('❌ ' + err.message);
+      btn.disabled = false;
+      btn.textContent = 'Зачислить ⭐';
+    }
+  });
 }
 
 function renderAdminContent() {

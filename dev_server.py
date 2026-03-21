@@ -20,6 +20,7 @@ from bot.config import settings
 from bot.db import (
     init_db, create_order, update_order_status, get_user_orders,
     upsert_user, get_all_orders, get_all_users, get_stats, get_user_balance,
+    deposit_stars,
 )
 
 logging.basicConfig(
@@ -299,6 +300,15 @@ async def admin_stats(request: web.Request) -> web.Response:
     """Get admin dashboard stats."""
     try:
         stats = await get_stats()
+        # Add total Stars across all users
+        from bot.db import get_db
+        db = await get_db()
+        try:
+            cursor = await db.execute("SELECT COALESCE(SUM(stars_balance), 0) as total FROM users")
+            row = await cursor.fetchone()
+            stats["total_stars"] = row["total"] if row else 0
+        finally:
+            await db.close()
         # Add LZT balances (regular + purchase)
         try:
             me = await lzt_api.get_me()
@@ -322,6 +332,38 @@ async def admin_stats(request: web.Request) -> web.Response:
         return web.json_response(stats)
     except Exception as e:
         return web.json_response({"error": str(e)}, status=500)
+
+
+async def admin_deposit(request: web.Request) -> web.Response:
+    """Admin: deposit Stars to a user's balance."""
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    user_id = body.get("user_id")
+    amount = body.get("amount")
+
+    if not user_id or not amount:
+        return web.json_response({"error": "user_id and amount required"}, status=400)
+
+    user_id = int(user_id)
+    amount = int(amount)
+    if amount <= 0:
+        return web.json_response({"error": "amount must be positive"}, status=400)
+
+    # Ensure user exists
+    await upsert_user(user_id, None, None)
+
+    new_balance = await deposit_stars(user_id, amount)
+    logger.info("Admin deposited %d Stars to user %d, new balance: %d", amount, user_id, new_balance)
+
+    return web.json_response({
+        "ok": True,
+        "user_id": user_id,
+        "deposited": amount,
+        "new_balance": new_balance,
+    })
 
 
 async def admin_orders(request: web.Request) -> web.Response:
@@ -409,6 +451,7 @@ def create_app() -> web.Application:
     app.router.add_get("/api/admin/stats", admin_stats)
     app.router.add_get("/api/admin/orders", admin_orders)
     app.router.add_get("/api/admin/users", admin_users)
+    app.router.add_post("/api/admin/deposit", admin_deposit)
     app.router.add_get("/api/user/balance", user_balance)
     app.router.add_get("/api/me", get_me)
 
