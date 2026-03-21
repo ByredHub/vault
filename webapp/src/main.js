@@ -503,8 +503,16 @@ async function showOrderDetail(orderId) {
       try {
         const res = await fetch(`/api/telegram-code/${itemId}`);
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Ошибка');
-        toast('📲 Код отправлен в Telegram!');
+        if (!res.ok) {
+          // Parse LZT error
+          const errMsg = data.error || '';
+          if (errMsg.includes('недействительна') || errMsg.includes('заблокирован')) {
+            throw new Error('Сессия недействительна — аккаунт заблокирован или деавторизован');
+          }
+          throw new Error(errMsg || 'Ошибка получения кода');
+        }
+        // Show codes in modal
+        showTelegramCodeModal(data);
       } catch (err) {
         toast('❌ ' + err.message);
       }
@@ -521,7 +529,13 @@ async function showOrderDetail(orderId) {
       try {
         const res = await fetch(`/api/telegram-reset/${itemId}`, { method: 'POST' });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Ошибка');
+        if (!res.ok) {
+          const errMsg = data.error || '';
+          if (errMsg.includes('недействительна') || errMsg.includes('заблокирован')) {
+            throw new Error('Сессия недействительна — аккаунт заблокирован или деавторизован');
+          }
+          throw new Error(errMsg || 'Ошибка');
+        }
         toast('🔄 Другие авторизации сброшены!');
       } catch (err) {
         toast('❌ ' + err.message);
@@ -532,6 +546,71 @@ async function showOrderDetail(orderId) {
   } catch (err) {
     root.querySelector('.pay-name').textContent = err.message;
   }
+}
+
+function showTelegramCodeModal(data) {
+  const root = document.getElementById('modal-root');
+
+  // Parse codes from LZT response — could be various formats
+  let codes = [];
+  if (data.codes) {
+    codes = Array.isArray(data.codes) ? data.codes : [data.codes];
+  } else if (data.loginCodes) {
+    codes = Array.isArray(data.loginCodes) ? data.loginCodes : [data.loginCodes];
+  } else if (data.code) {
+    codes = [{ code: data.code }];
+  } else if (data.item?.loginCodes) {
+    codes = data.item.loginCodes;
+  }
+
+  // If we got a raw response with no recognizable codes, try to find any code-like field
+  if (!codes.length) {
+    // Look for any 5-digit numbers in the response
+    const json = JSON.stringify(data);
+    const found = json.match(/\b\d{5}\b/g);
+    if (found) codes = found.map(c => ({ code: c }));
+  }
+
+  const phone = data.phone || data.telegram_phone || '';
+
+  root.innerHTML = `
+    <div class="modal-bg" id="code-modal-bg">
+      <div class="modal-panel">
+        <div class="modal-grip"></div>
+        <div class="pay-header">
+          <div class="pay-title">📲 Код для входа в Telegram</div>
+          ${phone ? `<div class="pay-name">Для номера +${phone}</div>` : ''}
+        </div>
+
+        <div class="tg-code-display">
+          ${codes.length ? codes.map((c, i) => `
+            <div class="tg-code-item">
+              ${c.date || c.time ? `<div class="tg-code-time">${esc(String(c.date || c.time || ''))}</div>` : i === 0 ? '<div class="tg-code-time">Только что</div>' : ''}
+              <div class="tg-code-row">
+                <div class="tg-code-digits">${esc(String(c.code || c))}</div>
+                <button class="tg-code-copy" data-code="${esc(String(c.code || c))}"><i class="bi bi-copy"></i></button>
+              </div>
+            </div>
+          `).join('') : '<div class="tg-code-time">Код не получен — попробуйте ещё раз</div>'}
+        </div>
+
+        <div class="tg-code-note">
+          <i class="bi bi-info-circle"></i> Код действует несколько минут
+        </div>
+      </div>
+    </div>`;
+
+  document.getElementById('code-modal-bg')?.addEventListener('click', e => {
+    if (e.target === e.currentTarget) { root.innerHTML = ''; haptic(); }
+  });
+
+  root.querySelectorAll('.tg-code-copy').forEach(btn => {
+    btn.addEventListener('click', () => {
+      navigator.clipboard?.writeText(btn.dataset.code);
+      toast('📋 Код скопирован!');
+      haptic('medium');
+    });
+  });
 }
 
 // ═══════════════════════════════════════
