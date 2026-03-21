@@ -332,7 +332,7 @@ async function renderOrders() {
   container.innerHTML = orders.map(o => {
     const s = sm[o.status] || sm.pending;
     return `
-      <div class="ocard">
+      <div class="ocard" data-order-id="${o.id}" style="cursor:pointer">
         <div class="ocard-icon ${s.c}"><i class="bi ${s.i}"></i></div>
         <div class="ocard-info">
           <div class="ocard-title">${esc(o.item_title)}</div>
@@ -343,13 +343,106 @@ async function renderOrders() {
           </div>
         </div>
         <div class="ocard-price">${fmtPrice(o.sell_price)} ₽</div>
+        <i class="bi bi-chevron-right" style="color:var(--t4);font-size:.75rem;margin-left:4px"></i>
       </div>`;
   }).join('');
 
   container.querySelectorAll('.ocard').forEach((c, i) => {
     c.style.opacity = '0';
     setTimeout(() => { c.style.transition = 'opacity .3s'; c.style.opacity = '1'; }, i * 50);
+    c.addEventListener('click', () => {
+      haptic('medium');
+      showOrderDetail(c.dataset.orderId);
+    });
   });
+}
+
+async function showOrderDetail(orderId) {
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `
+    <div class="modal-bg" id="modal-bg">
+      <div class="modal-panel">
+        <div class="modal-grip"></div>
+        <div class="pay-header">
+          <div class="pay-title">📦 Заказ #${orderId}</div>
+          <div class="pay-name">Загрузка...</div>
+        </div>
+      </div>
+    </div>`;
+
+  document.getElementById('modal-bg')?.addEventListener('click', e => {
+    if (e.target === e.currentTarget) { root.innerHTML = ''; haptic(); }
+  });
+
+  try {
+    const res = await fetch(`/api/orders/${orderId}`);
+    if (!res.ok) throw new Error('Не удалось загрузить заказ');
+    const { order } = await res.json();
+    const ad = order.account_data || {};
+
+    const statusLabels = {
+      completed: { icon: '✅', text: 'Завершён' },
+      paid: { icon: '💳', text: 'Оплачен' },
+      pending: { icon: '⏳', text: 'Ожидание' },
+      error: { icon: '❌', text: 'Ошибка' },
+    };
+    const st = statusLabels[order.status] || statusLabels.pending;
+
+    // Build credential rows
+    const creds = [];
+    const loginData = ad.loginData || {};
+    if (loginData.login || ad.account) creds.push({ label: 'Логин', value: loginData.login || ad.account, icon: 'bi-person' });
+    if (loginData.password || ad.password) creds.push({ label: 'Пароль', value: loginData.password || ad.password, icon: 'bi-key' });
+    if (loginData.email || ad.email) creds.push({ label: 'Email', value: loginData.email || ad.email, icon: 'bi-envelope' });
+    if (loginData.emailPassword || ad.emailPassword) creds.push({ label: 'Пароль Email', value: loginData.emailPassword || ad.emailPassword, icon: 'bi-shield-lock' });
+
+    // Any extra fields from loginData
+    for (const [key, val] of Object.entries(loginData)) {
+      if (!['login', 'password', 'email', 'emailPassword'].includes(key) && val) {
+        creds.push({ label: key, value: String(val), icon: 'bi-info-circle' });
+      }
+    }
+
+    const panel = root.querySelector('.modal-panel');
+    panel.innerHTML = `
+      <div class="modal-grip"></div>
+      <div class="pay-header">
+        <div class="pay-title">${st.icon} Заказ #${order.id}</div>
+        <div class="pay-name">${esc(order.item_title)}</div>
+      </div>
+
+      <div class="order-detail-status">${st.text} · ${fmtPrice(order.sell_price)} ₽</div>
+
+      ${creds.length ? `
+        <div class="order-creds-title">🔑 Данные аккаунта</div>
+        <div class="order-creds">
+          ${creds.map(c => `
+            <div class="order-cred-row">
+              <div class="order-cred-label"><i class="bi ${c.icon}"></i> ${esc(c.label)}</div>
+              <div class="order-cred-value" id="cred-${c.label}">
+                <span class="order-cred-text">${esc(c.value)}</span>
+                <button class="order-cred-copy" data-copy="${esc(c.value)}"><i class="bi bi-copy"></i></button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      ` : order.status === 'completed' ? '<div class="order-no-creds">Данные аккаунта недоступны</div>' : '<div class="order-no-creds">Заказ ещё не завершён</div>'}
+
+      ${order.error_message ? `<div class="order-error">⚠️ ${esc(order.error_message)}</div>` : ''}
+    `;
+
+    // Copy buttons
+    panel.querySelectorAll('.order-cred-copy').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        navigator.clipboard?.writeText(btn.dataset.copy);
+        toast('📋 Скопировано!');
+        haptic('medium');
+      });
+    });
+  } catch (err) {
+    root.querySelector('.pay-name').textContent = err.message;
+  }
 }
 
 // ═══════════════════════════════════════

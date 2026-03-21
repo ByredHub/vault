@@ -20,7 +20,7 @@ from bot.config import settings
 from bot.db import (
     init_db, create_order, update_order_status, get_user_orders,
     upsert_user, get_all_orders, get_all_users, get_stats, get_user_balance,
-    deposit_stars,
+    deposit_stars, get_order,
 )
 
 logging.basicConfig(
@@ -266,6 +266,24 @@ async def get_orders(request: web.Request) -> web.Response:
     return web.json_response({"orders": orders})
 
 
+async def get_order_detail(request: web.Request) -> web.Response:
+    """Get order details including account data."""
+    order_id = int(request.match_info["order_id"])
+    order = await get_order(order_id)
+    if not order:
+        return web.json_response({"error": "Заказ не найден"}, status=404)
+
+    result = dict(order)
+    # Parse account_data JSON string
+    if result.get("account_data"):
+        try:
+            result["account_data"] = json.loads(result["account_data"])
+        except Exception:
+            pass
+
+    return web.json_response({"order": result})
+
+
 async def get_balance(request: web.Request) -> web.Response:
     """Get LZT balance (regular + purchase)."""
     try:
@@ -494,6 +512,7 @@ def create_app() -> web.Application:
     app.router.add_get("/api/catalog/{item_id}", get_item_detail)
     app.router.add_post("/api/purchase", purchase_item)
     app.router.add_get("/api/orders/my", get_orders)
+    app.router.add_get("/api/orders/{order_id}", get_order_detail)
     app.router.add_get("/api/balance", get_balance)
     app.router.add_get("/api/admin/stats", admin_stats)
     app.router.add_get("/api/admin/orders", admin_orders)
