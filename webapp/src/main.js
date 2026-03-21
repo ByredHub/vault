@@ -30,7 +30,12 @@ async function initTelegram() {
   document.getElementById('admin-tab').style.display = isAdmin ? '' : 'none';
 }
 
-function haptic(t = 'light') { tg?.HapticFeedback?.impactOccurred?.(t); }
+function haptic(t = 'light') {
+  const hf = tg?.HapticFeedback;
+  if (!hf) return;
+  if (t === 'success' || t === 'error' || t === 'warning') hf.notificationOccurred?.(t);
+  else hf.impactOccurred?.(t);
+}
 
 function openModal(html) {
   const root = document.getElementById('modal-root');
