@@ -32,6 +32,16 @@ async function initTelegram() {
 
 function haptic(t = 'light') { tg?.HapticFeedback?.impactOccurred?.(t); }
 
+function openModal(html) {
+  const root = document.getElementById('modal-root');
+  root.innerHTML = html;
+  document.body.style.overflow = 'hidden';
+}
+function closeModal() {
+  document.getElementById('modal-root').innerHTML = '';
+  document.body.style.overflow = '';
+}
+
 // ═══════════════════════════════════════
 // Router
 // ═══════════════════════════════════════
@@ -247,7 +257,7 @@ function showItemDetail(item) {
   if (item.premium) chips.push({ icon: 'bi-star-fill', label: 'Premium' });
   if (item.phone) chips.push({ icon: 'bi-phone', label: item.phone });
 
-  root.innerHTML = `
+  openModal(`
     <div class="modal-bg" id="modal-bg">
       <div class="modal-panel">
         <div class="modal-grip"></div>
@@ -283,14 +293,14 @@ function showItemDetail(item) {
         </div>
       </div>
     </div>
-  `;
+  `);
 
   document.getElementById('modal-bg')?.addEventListener('click', e => {
-    if (e.target === e.currentTarget) { root.innerHTML = ''; haptic(); }
+    if (e.target === e.currentTarget) { closeModal(); haptic(); }
   });
 
   document.getElementById('detail-buy-btn')?.addEventListener('click', () => {
-    root.innerHTML = '';
+    closeModal();
     showPayment(item.id, item.price, item.title);
   });
 }
@@ -306,7 +316,7 @@ function showPayment(itemId, price, title) {
   const starsPrice = price; // Already in Stars from backend
   const cat = CATEGORIES.find(c => c.slug === selectedCategory);
 
-  root.innerHTML = `
+  openModal(`
     <div class="modal-bg" id="modal-bg">
       <div class="modal-panel">
         <div class="modal-grip"></div>
@@ -336,10 +346,10 @@ function showPayment(itemId, price, title) {
         </button>
       </div>
     </div>
-  `;
+  `);
 
   document.getElementById('modal-bg')?.addEventListener('click', e => {
-    if (e.target === e.currentTarget) { root.innerHTML = ''; haptic(); }
+    if (e.target === e.currentTarget) { closeModal(); haptic(); }
   });
 
   document.getElementById('pay-stars-btn')?.addEventListener('click', async () => {
@@ -375,16 +385,16 @@ function showPayment(itemId, price, title) {
               <button class="btn-cta" id="close-success" style="background:var(--bg3);color:var(--t2)">Закрыть</button>
             </div>`;
           document.getElementById('go-to-order')?.addEventListener('click', () => {
-            root.innerHTML = '';
+            closeModal();
             if (result.order_id) showOrderDetail(result.order_id);
           });
           document.getElementById('close-success')?.addEventListener('click', () => {
-            root.innerHTML = '';
+            closeModal();
           });
         }
         loadBalance();
       } else {
-        root.innerHTML = '';
+        closeModal();
         toast('Статус: ' + (result.status || 'unknown'));
       }
     } catch (err) {
@@ -400,7 +410,7 @@ function showPayment(itemId, price, title) {
             <div style="font-size:.75rem;color:var(--t3);line-height:1.5;margin-bottom:16px">${esc(msg)}</div>
             <div style="font-size:.625rem;color:var(--t4)">⭐ Stars возвращены на баланс</div>
           </div>`;
-        setTimeout(() => { root.innerHTML = ''; }, 4000);
+        setTimeout(() => { closeModal(); }, 4000);
       } else {
         toast('❌ ' + msg);
       }
@@ -465,7 +475,7 @@ async function renderOrders() {
 
 async function showOrderDetail(orderId) {
   const root = document.getElementById('modal-root');
-  root.innerHTML = `
+  openModal(`
     <div class="modal-bg" id="modal-bg">
       <div class="modal-panel">
         <div class="modal-grip"></div>
@@ -474,10 +484,10 @@ async function showOrderDetail(orderId) {
           <div class="pay-name">Загрузка...</div>
         </div>
       </div>
-    </div>`;
+    </div>`);
 
   document.getElementById('modal-bg')?.addEventListener('click', e => {
-    if (e.target === e.currentTarget) { root.innerHTML = ''; haptic(); }
+    if (e.target === e.currentTarget) { closeModal(); haptic(); }
   });
 
   try {
@@ -673,7 +683,7 @@ function showTelegramCodeModal(data, itemId) {
 
   const phone = data.phone || data.telegram_phone || '';
 
-  root.innerHTML = `
+  openModal(`
     <div class="modal-bg" id="code-modal-bg">
       <div class="modal-panel">
         <div class="modal-grip"></div>
@@ -706,10 +716,10 @@ function showTelegramCodeModal(data, itemId) {
           <i class="bi bi-info-circle"></i> Код действителен несколько минут. Используйте последний.
         </div>
       </div>
-    </div>`;
+    </div>`);
 
   document.getElementById('code-modal-bg')?.addEventListener('click', e => {
-    if (e.target === e.currentTarget) { root.innerHTML = ''; haptic(); }
+    if (e.target === e.currentTarget) { closeModal(); haptic(); }
   });
 
   root.querySelectorAll('.tg-code-copy').forEach(btn => {
@@ -834,7 +844,7 @@ async function renderAdmin() {
 
 function showDepositModal() {
   const root = document.getElementById('modal-root');
-  root.innerHTML = `
+  openModal(`
     <div class="modal-bg" id="modal-bg">
       <div class="modal-panel">
         <div class="modal-grip"></div>
@@ -849,10 +859,10 @@ function showDepositModal() {
         </div>
       </div>
     </div>
-  `;
+  `);
 
   document.getElementById('modal-bg')?.addEventListener('click', e => {
-    if (e.target === e.currentTarget) { root.innerHTML = ''; haptic(); }
+    if (e.target === e.currentTarget) { closeModal(); haptic(); }
   });
 
   document.getElementById('deposit-submit')?.addEventListener('click', async () => {
@@ -873,7 +883,7 @@ function showDepositModal() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ошибка');
-      root.innerHTML = '';
+      closeModal();
       toast(`✅ Зачислено ${amount} ⭐ → User ${uid} (баланс: ${data.new_balance}⭐)`);
       renderAdmin(); // Refresh stats
     } catch (err) {
