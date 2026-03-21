@@ -84,15 +84,28 @@ async def get_catalog(request: web.Request) -> web.Response:
         # Only keep active (available for purchase) items
         items = [i for i in items if i.get("item_state") == "active"]
 
-        # Apply markup
+        # Strip to essential fields only (reduces 430KB → ~40KB)
+        KEEP_FIELDS = {
+            "item_id", "title", "title_en", "price", "original_price",
+            "category_id", "item_state", "item_origin",
+            "published_date", "refreshed_date",
+            "telegram_phone", "telegram_id", "telegram_premium",
+            "telegram_country", "telegram_dc_id",
+            "description", "login",
+        }
+
+        # Apply markup and strip
+        slim_items = []
         for item in items:
             original = item.get("price", 0)
-            item["original_price"] = original
-            item["price"] = settings.calculate_price(original)
+            slim = {k: v for k, v in item.items() if k in KEEP_FIELDS}
+            slim["original_price"] = original
+            slim["price"] = settings.calculate_price(original)
+            slim_items.append(slim)
 
         result = {
-            "items": items,
-            "totalItems": len(items),
+            "items": slim_items,
+            "totalItems": len(slim_items),
             "currentPage": page,
         }
 
