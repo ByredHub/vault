@@ -275,14 +275,13 @@ function showPayment(itemId, price, title) {
       const result = await purchaseItem(itemId);
       root.innerHTML = '';
       if (result.status === 'completed') {
-        toast('Покупка успешна!');
-        // Show account data
-        const ad = result.account_data || {};
-        const dataLines = Object.entries(ad)
-          .filter(([k]) => !['item_id','title'].includes(k))
-          .map(([k,v]) => typeof v === 'object' ? `${k}: ${JSON.stringify(v)}` : `${k}: ${v}`)
-          .join('\n');
-        alert('Данные аккаунта:\n\n' + dataLines);
+        haptic('success');
+        toast('✅ Покупка успешна!');
+        loadBalance(); // Refresh balance
+        // Open order detail modal
+        if (result.order_id) {
+          showOrderDetail(result.order_id);
+        }
       } else {
         toast('Статус: ' + (result.status || 'unknown'));
       }
@@ -388,18 +387,40 @@ async function showOrderDetail(orderId) {
     };
     const st = statusLabels[order.status] || statusLabels.pending;
 
-    // Build credential rows
+    // Build credential rows — skip duplicates and encoded variants
     const creds = [];
     const loginData = ad.loginData || {};
-    if (loginData.login || ad.account) creds.push({ label: 'Логин', value: loginData.login || ad.account, icon: 'bi-person' });
-    if (loginData.password || ad.password) creds.push({ label: 'Пароль', value: loginData.password || ad.password, icon: 'bi-key' });
-    if (loginData.email || ad.email) creds.push({ label: 'Email', value: loginData.email || ad.email, icon: 'bi-envelope' });
-    if (loginData.emailPassword || ad.emailPassword) creds.push({ label: 'Пароль Email', value: loginData.emailPassword || ad.emailPassword, icon: 'bi-shield-lock' });
+    const skipKeys = new Set(['raw', 'encodedRaw', 'encodedPassword', 'encodedOldPassword']);
 
-    // Any extra fields from loginData
+    // Main credentials
+    const login = loginData.login || ad.account || '';
+    const password = loginData.password || ad.password || '';
+    const email = loginData.email || ad.email || '';
+    const emailPwd = loginData.emailPassword || ad.emailPassword || '';
+
+    // Detect if this is a Telegram account (has telegram_phone or long hex login)
+    const isTelegram = ad.telegram_phone || (login.length > 100 && /^[a-f0-9]+$/i.test(login));
+
+    if (isTelegram) {
+      // Telegram account format (like LZT shows)
+      if (ad.telegram_phone) creds.push({ label: 'Номер телефона', value: String(ad.telegram_phone), icon: 'bi-phone', long: false });
+      if (login) creds.push({ label: 'Auth Key (HEX)', value: login, icon: 'bi-key', long: true });
+      if (ad.telegram_dc_id) creds.push({ label: 'DC ID', value: String(ad.telegram_dc_id), icon: 'bi-hdd-network', long: false });
+      if (ad.telegram_id) creds.push({ label: 'User ID', value: String(ad.telegram_id), icon: 'bi-person-badge', long: false });
+      if (ad.telegram_country) creds.push({ label: 'Страна', value: String(ad.telegram_country), icon: 'bi-globe', long: false });
+    } else {
+      // Standard account format
+      if (login) creds.push({ label: 'Логин', value: login, icon: 'bi-person', long: false });
+      if (password) creds.push({ label: 'Пароль', value: password, icon: 'bi-key', long: false });
+      if (email) creds.push({ label: 'Email', value: email, icon: 'bi-envelope', long: false });
+      if (emailPwd) creds.push({ label: 'Пароль Email', value: emailPwd, icon: 'bi-shield-lock', long: false });
+    }
+
+    // Extra fields from loginData (skip known + duplicates)
+    const knownKeys = new Set(['login', 'password', 'email', 'emailPassword', ...skipKeys]);
     for (const [key, val] of Object.entries(loginData)) {
-      if (!['login', 'password', 'email', 'emailPassword'].includes(key) && val) {
-        creds.push({ label: key, value: String(val), icon: 'bi-info-circle' });
+      if (!knownKeys.has(key) && val && String(val) !== '?') {
+        creds.push({ label: key, value: String(val), icon: 'bi-info-circle', long: String(val).length > 100 });
       }
     }
 
@@ -416,11 +437,12 @@ async function showOrderDetail(orderId) {
       ${creds.length ? `
         <div class="order-creds-title">🔑 Данные аккаунта</div>
         <div class="order-creds">
-          ${creds.map(c => `
+          ${creds.map((c, i) => `
             <div class="order-cred-row">
               <div class="order-cred-label"><i class="bi ${c.icon}"></i> ${esc(c.label)}</div>
-              <div class="order-cred-value" id="cred-${c.label}">
-                <span class="order-cred-text">${esc(c.value)}</span>
+              <div class="order-cred-value">
+                <span class="order-cred-text ${c.long ? 'cred-truncated' : ''}" id="cred-text-${i}">${c.long ? esc(c.value.slice(0, 80)) + '…' : esc(c.value)}</span>
+                ${c.long ? `<button class="order-cred-expand" data-full="${esc(c.value)}" data-idx="${i}"><i class="bi bi-arrows-angle-expand"></i></button>` : ''}
                 <button class="order-cred-copy" data-copy="${esc(c.value)}"><i class="bi bi-copy"></i></button>
               </div>
             </div>
@@ -438,6 +460,24 @@ async function showOrderDetail(orderId) {
         navigator.clipboard?.writeText(btn.dataset.copy);
         toast('📋 Скопировано!');
         haptic('medium');
+      });
+    });
+
+    // Expand buttons for long values
+    panel.querySelectorAll('.order-cred-expand').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = btn.dataset.idx;
+        const text = document.getElementById(`cred-text-${idx}`);
+        if (text.classList.contains('cred-truncated')) {
+          text.textContent = btn.dataset.full;
+          text.classList.remove('cred-truncated');
+          btn.innerHTML = '<i class="bi bi-arrows-angle-contract"></i>';
+        } else {
+          text.textContent = btn.dataset.full.slice(0, 80) + '…';
+          text.classList.add('cred-truncated');
+          btn.innerHTML = '<i class="bi bi-arrows-angle-expand"></i>';
+        }
       });
     });
   } catch (err) {

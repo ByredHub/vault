@@ -235,14 +235,21 @@ async def purchase_item(request: web.Request) -> web.Response:
 
         # 5. Extract account data
         purchased_item = result.get("item", {})
+        login_data = purchased_item.get("loginData", {})
         account_data = {
-            "loginData": purchased_item.get("loginData", {}),
+            "loginData": login_data,
             "account": purchased_item.get("account", ""),
             "password": purchased_item.get("password", ""),
             "email": purchased_item.get("email", ""),
             "emailPassword": purchased_item.get("emailPassword", ""),
             "item_id": item_id,
             "title": title,
+            # Telegram-specific fields
+            "telegram_phone": purchased_item.get("telegram_phone", ""),
+            "telegram_id": purchased_item.get("telegram_id", ""),
+            "telegram_dc_id": purchased_item.get("telegram_dc_id", ""),
+            "telegram_country": purchased_item.get("telegram_country", ""),
+            "telegram_premium": purchased_item.get("telegram_premium", 0),
         }
 
         # 6. Update order as completed
