@@ -34,7 +34,7 @@ logging.basicConfig(
 logger = logging.getLogger("dev_server")
 
 # Fake user for dev mode
-DEV_USER = {"id": 999999, "username": "dev_tester", "first_name": "Dev"}
+DEV_USER = {"id": 9999699, "username": "dev_tester", "first_name": "Dev"}
 
 WEBAPP_DIR = Path(__file__).parent / "webapp"
 
@@ -596,6 +596,120 @@ async def get_me(request: web.Request) -> web.Response:
         "is_admin": user_id in admin_ids,
     })
 
+
+# ═══════════════════════════════════════
+# Send account data to Telegram
+# ═══════════════════════════════════════
+
+async def send_account_tg(request: web.Request) -> web.Response:
+    """Send account data as file to user in Telegram."""
+    order_id = int(request.match_info["order_id"])
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    fmt = body.get("format", "json")  # tdata, telethon, pyrogram, json
+    user_id = body.get("user_id")
+    if not user_id:
+        return web.json_response({"error": "user_id required"}, status=400)
+
+    order = await get_order(order_id)
+    if not order:
+        return web.json_response({"error": "Order not found"}, status=404)
+
+    ad = order.get("account_data")
+    if isinstance(ad, str):
+        ad = json.loads(ad)
+    if not ad:
+        return web.json_response({"error": "No account data"}, status=400)
+
+    login_data = ad.get("loginData", {})
+    auth_key = login_data.get("login", "") or ad.get("account", "")
+    phone = ad.get("telegram_phone", "")
+    dc_id = ad.get("telegram_dc_id", "")
+    tg_id = ad.get("telegram_id", "")
+
+    import io
+    import aiohttp as _aio
+
+    if fmt == "json":
+        content = json.dumps({
+            "phone": phone,
+            "auth_key_hex": auth_key,
+            "dc_id": dc_id,
+            "user_id": tg_id,
+            "country": ad.get("telegram_country", ""),
+            "premium": ad.get("telegram_premium", 0),
+        }, indent=2, ensure_ascii=False)
+        filename = f"account_{order_id}.json"
+        caption = f"📦 Заказ #{order_id} — JSON"
+
+    elif fmt == "telethon":
+        content = (
+            f"# Telethon Session Data\n"
+            f"# Заказ #{order_id}\n\n"
+            f"phone = \"{phone}\"\n"
+            f"auth_key_hex = \"{auth_key}\"\n"
+            f"dc_id = {dc_id or 2}\n"
+            f"user_id = {tg_id or 0}\n"
+        )
+        filename = f"account_{order_id}.session_info"
+        caption = f"📦 Заказ #{order_id} — .session Telethon\n\nИспользуйте auth_key для создания .session файла"
+
+    elif fmt == "pyrogram":
+        content = json.dumps({
+            "dc_id": int(dc_id) if dc_id else 2,
+            "user_id": int(tg_id) if tg_id else 0,
+            "auth_key": auth_key,
+            "phone": phone,
+            "is_bot": False,
+        }, indent=2, ensure_ascii=False)
+        filename = f"account_{order_id}_pyrogram.json"
+        caption = f"📦 Заказ #{order_id} — .session Pyrogram\n\nИмпортируйте через Pyrogram"
+
+    elif fmt == "tdata":
+        content = (
+            f"# TData Info\n"
+            f"# Заказ #{order_id}\n\n"
+            f"Phone: {phone}\n"
+            f"Auth Key (HEX): {auth_key}\n"
+            f"DC ID: {dc_id}\n"
+            f"User ID: {tg_id}\n"
+            f"Country: {ad.get('telegram_country', '')}\n"
+            f"Premium: {ad.get('telegram_premium', 0)}\n"
+        )
+        filename = f"account_{order_id}_tdata.txt"
+        caption = f"📦 Заказ #{order_id} — TData"
+
+    else:
+        return web.json_response({"error": "Unknown format"}, status=400)
+
+    # Send file via Telegram Bot API
+    bot_token = settings.bot_token
+    if not bot_token:
+        return web.json_response({"error": "Bot not configured"}, status=500)
+
+    url = f"https://api.telegram.org/bot{bot_token}/sendDocument"
+    file_bytes = io.BytesIO(content.encode("utf-8"))
+    file_bytes.name = filename
+
+    form = _aio.FormData()
+    form.add_field("chat_id", str(user_id))
+    form.add_field("caption", caption)
+    form.add_field("parse_mode", "HTML")
+    form.add_field("document", file_bytes, filename=filename)
+
+    async with _aio.ClientSession() as session:
+        resp = await session.post(url, data=form)
+        if resp.status != 200:
+            err = await resp.text()
+            logger.warning("Failed to send doc to %s: %s", user_id, err)
+            return web.json_response({"error": "Failed to send"}, status=500)
+
+    return web.json_response({"status": "sent", "format": fmt})
+
+
 # ═══════════════════════════════════════
 # Support
 # ═══════════════════════════════════════
@@ -759,6 +873,7 @@ def create_app() -> web.Application:
     app.router.add_post("/api/purchase", purchase_item)
     app.router.add_get("/api/orders/my", get_orders)
     app.router.add_get("/api/orders/{order_id}", get_order_detail)
+    app.router.add_post("/api/orders/{order_id}/send-tg", send_account_tg)
     app.router.add_get("/api/telegram-code/{item_id}", telegram_login_code)
     app.router.add_post("/api/telegram-reset/{item_id}", telegram_reset_auth)
     app.router.add_get("/api/balance", get_balance)

@@ -579,6 +579,13 @@ async function showOrderDetail(orderId) {
             <i class="bi bi-arrow-counterclockwise"></i> Сбросить авторизации
           </button>
         </div>
+        <div class="order-creds-title" style="margin-top:14px">⬇️ Скачать как:</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;padding:0 16px 6px">
+          <button class="tg-dl-btn" data-fmt="tdata" data-oid="${order.id}" style="flex:1;padding:8px 4px;background:linear-gradient(135deg,#22c55e,#16a34a);border:none;border-radius:8px;color:#fff;font-size:.6875rem;font-weight:600;cursor:pointer">TData</button>
+          <button class="tg-dl-btn" data-fmt="telethon" data-oid="${order.id}" style="flex:1;padding:8px 4px;background:linear-gradient(135deg,#22c55e,#16a34a);border:none;border-radius:8px;color:#fff;font-size:.6875rem;font-weight:600;cursor:pointer">.session Telethon</button>
+          <button class="tg-dl-btn" data-fmt="pyrogram" data-oid="${order.id}" style="flex:1;padding:8px 4px;background:linear-gradient(135deg,#22c55e,#16a34a);border:none;border-radius:8px;color:#fff;font-size:.6875rem;font-weight:600;cursor:pointer">.session Pyrogram</button>
+          <button class="tg-dl-btn" data-fmt="json" data-oid="${order.id}" style="flex:1;padding:8px 4px;background:linear-gradient(135deg,#22c55e,#16a34a);border:none;border-radius:8px;color:#fff;font-size:.6875rem;font-weight:600;cursor:pointer">.json</button>
+        </div>
       ` : ''}
     `;
 
@@ -660,6 +667,39 @@ async function showOrderDetail(orderId) {
       btn.disabled = false;
       btn.innerHTML = '<i class="bi bi-arrow-counterclockwise"></i> Сбросить авторизации';
     });
+
+    // Download / Send to Telegram buttons
+    panel.querySelectorAll('.tg-dl-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const fmt = btn.dataset.fmt;
+        const oid = btn.dataset.oid;
+        const origText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = '⏳';
+        try {
+          const uid = tg?.initDataUnsafe?.user?.id || '';
+          const res = await fetch(`/api/orders/${oid}/send-tg`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ format: fmt, user_id: uid }),
+          });
+          if (!res.ok) {
+            const d = await res.json().catch(() => ({}));
+            throw new Error(d.error || 'Ошибка');
+          }
+          btn.textContent = '✅';
+          toast('📨 Отправлено в Telegram!');
+          haptic('success');
+          setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 2000);
+        } catch (err) {
+          btn.textContent = origText;
+          btn.disabled = false;
+          toast('❌ ' + err.message);
+        }
+      });
+    });
+
   } catch (err) {
     root.querySelector('.pay-name').textContent = err.message;
   }
