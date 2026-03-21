@@ -42,12 +42,14 @@ class Settings(BaseSettings):
         """Check if a user ID is an admin."""
         return user_id in self.admin_id_list
 
-    def calculate_price(self, original_price: float) -> float:
-        """Calculate selling price with markup."""
+    def calculate_price(self, original_price: float) -> int:
+        """Calculate selling price in Stars (minimum 65)."""
         markup = original_price * (self.markup_percent / 100)
         if markup < self.min_markup_rub:
             markup = self.min_markup_rub
-        return round(original_price + markup, 2)
+        price_rub = original_price + markup
+        stars = max(65, int(price_rub / 1.6))
+        return stars
 
 
 settings = Settings()

@@ -183,7 +183,7 @@ async function loadItems(silent = false) {
           <div class="icard-title">${esc(title)}</div>
           ${tags.length ? `<div class="icard-tags">${tags.map((t, i) => `<span class="icard-tag ${i === 0 ? 'tag-green' : 'tag-blue'}">${esc(t)}</span>`).join('')}</div>` : ''}
           <div class="icard-bottom">
-            <div class="icard-price">${fmtPrice(price)}<small>₽</small></div>
+            <div class="icard-price">⭐ ${fmtPrice(price)}</div>
             <button class="btn-buy-sm" data-buy="${item.item_id}" data-price="${price}" data-name="${esc(title)}">
               <i class="bi bi-bag-plus"></i>
             </button>
@@ -221,7 +221,7 @@ function renderCatalog() { renderCategories(); loadItems(); }
 
 function showPayment(itemId, price, title) {
   const root = document.getElementById('modal-root');
-  const starsPrice = Math.ceil(price / 1.6);
+  const starsPrice = price; // Already in Stars from backend
   const cat = CATEGORIES.find(c => c.slug === selectedCategory);
 
   root.innerHTML = `
@@ -236,7 +236,6 @@ function showPayment(itemId, price, title) {
 
         <div class="pay-amount">
           <div class="pay-amount-value">⭐ ${fmtPrice(starsPrice)}</div>
-          <div class="pay-amount-convert">${fmtPrice(price)} ₽</div>
         </div>
 
         <div class="pay-divider"></div>
@@ -248,10 +247,6 @@ function showPayment(itemId, price, title) {
         <div class="pay-detail">
           <span class="pay-detail-label">Способ оплаты</span>
           <span class="pay-detail-value">Telegram Stars</span>
-        </div>
-        <div class="pay-detail">
-          <span class="pay-detail-label">Курс</span>
-          <span class="pay-detail-value">1 ⭐ = 1.6 ₽</span>
         </div>
 
         <button class="btn-cta cta-stars" id="pay-stars-btn">
@@ -284,15 +279,30 @@ function showPayment(itemId, price, title) {
       const result = await purchaseItem(itemId);
       clearTimeout(t1); clearTimeout(t2);
 
-      root.innerHTML = '';
       if (result.status === 'completed') {
         haptic('success');
-        toast('✅ Покупка успешна!');
-        loadBalance();
-        if (result.order_id) {
-          showOrderDetail(result.order_id);
+        // Show success screen in modal
+        if (panel) {
+          panel.innerHTML = `
+            <div class="modal-grip"></div>
+            <div style="text-align:center;padding:32px 16px">
+              <div style="font-size:3rem;margin-bottom:16px">🎉</div>
+              <div style="font-size:1.1rem;font-weight:700;color:var(--t1);margin-bottom:8px">Спасибо за покупку!</div>
+              <div style="font-size:.8125rem;color:var(--t3);margin-bottom:20px">Аккаунт доступен в ваших заказах</div>
+              <button class="btn-cta cta-stars" id="go-to-order" style="margin-bottom:8px">📦 Открыть заказ</button>
+              <button class="btn-cta" id="close-success" style="background:var(--bg3);color:var(--t2)">Закрыть</button>
+            </div>`;
+          document.getElementById('go-to-order')?.addEventListener('click', () => {
+            root.innerHTML = '';
+            if (result.order_id) showOrderDetail(result.order_id);
+          });
+          document.getElementById('close-success')?.addEventListener('click', () => {
+            root.innerHTML = '';
+          });
         }
+        loadBalance();
       } else {
+        root.innerHTML = '';
         toast('Статус: ' + (result.status || 'unknown'));
       }
     } catch (err) {

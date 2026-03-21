@@ -6,6 +6,7 @@ Usage: python dev_server.py
 import asyncio
 import json
 import logging
+import os
 import sys
 import time
 from pathlib import Path
@@ -39,6 +40,31 @@ WEBAPP_DIR = Path(__file__).parent / "webapp"
 CATALOG_CACHE: dict[str, tuple[dict, float]] = {}
 CACHE_TTL = 45  # seconds — short TTL keeps items fresh
 MAX_CACHE_ENTRIES = 50
+
+
+async def _notify_purchase(user_id: int, item_title: str, order_id: int, stars: int) -> None:
+    """Send Telegram notification about successful purchase."""
+    try:
+        import aiohttp as _aio
+        bot_token = settings.bot_token
+        if not bot_token:
+            return
+        text = (
+            f"🎉 <b>Покупка совершена!</b>\n\n"
+            f"📦 <b>{item_title}</b>\n"
+            f"💰 Списано: ⭐ {stars} Stars\n"
+            f"🔖 Заказ #{order_id}\n\n"
+            f"Откройте магазин, чтобы получить данные аккаунта."
+        )
+        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        async with _aio.ClientSession() as s:
+            await s.post(url, json={
+                "chat_id": user_id,
+                "text": text,
+                "parse_mode": "HTML",
+            })
+    except Exception as e:
+        logger.warning("Failed to send purchase notification: %s", e)
 
 
 # ═══════════════════════════════════════
@@ -200,7 +226,7 @@ async def purchase_item(request: web.Request) -> web.Response:
 
         # Check user has enough Stars balance
         user_bal = await get_user_balance(user_id)
-        stars_needed = max(1, int(sell_price / 1.6))  # Same formula as frontend
+        stars_needed = sell_price  # calculate_price already returns Stars
         if user_bal < stars_needed:
             return web.json_response(
                 {"error": f"Недостаточно Stars. Нужно ⭐{stars_needed}, у вас ⭐{user_bal}"},
@@ -274,6 +300,9 @@ async def purchase_item(request: web.Request) -> web.Response:
         )
         logger.info("Order #%d completed! Item #%d purchased.", order_id, item_id)
         CATALOG_CACHE.clear()
+
+        # Send Telegram notification about purchase
+        asyncio.create_task(_notify_purchase(user_id, title, order_id, stars_needed))
 
         return web.json_response({
             "status": "completed",
