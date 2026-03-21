@@ -530,14 +530,36 @@ function renderAdminItems(el) {
 // Profile
 // ═══════════════════════════════════════
 
-function renderProfile() {
+async function renderProfile() {
   const container = document.getElementById('profile-container');
-  const tgUser = tg?.initDataUnsafe?.user;
+  let tgUser = tg?.initDataUnsafe?.user;
+
+  // Fallback: get user info from API when Telegram SDK not available
+  if (!tgUser) {
+    try {
+      const res = await fetch('/api/me');
+      if (res.ok) {
+        const data = await res.json();
+        tgUser = { id: data.user_id, first_name: 'User', username: `id${data.user_id}`, photo_url: null };
+      }
+    } catch { /* ignore */ }
+  }
+
   const firstName = tgUser?.first_name || 'User';
   const username = tgUser?.username || 'unknown';
   const userId = tgUser?.id || '—';
   const photoUrl = tgUser?.photo_url || null;
   const initial = firstName.charAt(0).toUpperCase();
+
+  // Get Stars balance
+  let starsBalance = 0;
+  try {
+    const res = await fetch('/api/user/balance');
+    if (res.ok) {
+      const data = await res.json();
+      starsBalance = data.stars_balance || 0;
+    }
+  } catch { /* ignore */ }
 
   const menuItems = [
     { icon: 'bi-headset', color: 'pmi-blue', label: 'Поддержка', desc: 'Помощь и вопросы' },
@@ -556,6 +578,7 @@ function renderProfile() {
       <div class="profile-name">${esc(firstName)}</div>
       <div class="profile-username">@${esc(username)}</div>
       <div class="profile-id">ID: ${userId}</div>
+      <div class="profile-status ps-active">⭐ ${starsBalance} Stars</div>
     </div>
 
     <div class="profile-menu">
