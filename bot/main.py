@@ -69,7 +69,7 @@ async def main() -> None:
     web_app = create_web_app()
     runner = web.AppRunner(web_app)
     await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", 8080)
+    site = web.TCPSite(runner, "0.0.0.0", 8081)
     await site.start()
     logger.info("Web API started on http://0.0.0.0:8080")
 
