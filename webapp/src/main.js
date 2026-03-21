@@ -1266,24 +1266,34 @@ function showCreateTicket() {
     const btn = document.getElementById('ticket-submit');
     btn.disabled = true;
     btn.textContent = 'Отправка...';
+    let success = false;
     try {
       const uid = tg?.initDataUnsafe?.user?.id || '';
       const attachments = selectedPhotos.length ? JSON.stringify(selectedPhotos.map(p => p.base64)) : null;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 15000);
       const res = await fetch('/api/support', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: uid, subject: subject || 'Обращение', message: msg, attachments }),
+        signal: controller.signal,
       });
-      if (!res.ok) throw new Error('Ошибка');
-      haptic('success');
-      toast('✅ Тикет создан!');
-      closeModal();
-      setTimeout(() => showTicketsList(), 300);
+      clearTimeout(timer);
+      if (!res.ok) throw new Error('Ошибка сервера');
+      success = true;
     } catch (err) {
-      haptic('error');
-      btn.disabled = false;
-      btn.textContent = 'Отправить';
-      toast('❌ ' + (err.message || 'Ошибка'));
+      toast('❌ ' + (err.name === 'AbortError' ? 'Таймаут' : (err.message || 'Ошибка')));
+    } finally {
+      if (success) {
+        closeModal();
+        toast('✅ Тикет создан!');
+        try { haptic('success'); } catch {}
+        setTimeout(() => showTicketsList(), 300);
+      } else {
+        const b = document.getElementById('ticket-submit');
+        if (b) { b.disabled = false; b.innerHTML = '<i class="bi bi-send"></i> Отправить'; }
+        try { haptic('error'); } catch {}
+      }
     }
   });
 }
