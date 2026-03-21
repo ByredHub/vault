@@ -298,9 +298,28 @@ async def get_balance(request: web.Request) -> web.Response:
 
 async def user_balance(request: web.Request) -> web.Response:
     """Get current user's Stars balance."""
-    user_id = DEV_USER["id"]  # TODO: extract from Telegram initData
+    # Try to get user_id from query, then from initData header, then fallback
+    user_id = request.query.get("user_id")
+    if user_id:
+        user_id = int(user_id)
+    else:
+        # Try Telegram initData
+        init_data = request.headers.get("X-Telegram-Init-Data", "")
+        if init_data:
+            import json
+            from urllib.parse import parse_qs, unquote
+            parsed = parse_qs(init_data)
+            user_raw = parsed.get("user", [None])[0]
+            if user_raw:
+                try:
+                    tg_user = json.loads(unquote(user_raw))
+                    user_id = tg_user.get("id")
+                except Exception:
+                    pass
+        if not user_id:
+            user_id = DEV_USER["id"]
     balance = await get_user_balance(user_id)
-    return web.json_response({"stars_balance": balance})
+    return web.json_response({"stars_balance": balance, "user_id": user_id})
 
 
 # ═══════════════════════════════════════

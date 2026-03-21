@@ -554,7 +554,8 @@ async function renderProfile() {
   // Get Stars balance
   let starsBalance = 0;
   try {
-    const res = await fetch('/api/user/balance');
+    const balUrl = userId && userId !== '—' ? `/api/user/balance?user_id=${userId}` : '/api/user/balance';
+    const res = await fetch(balUrl);
     if (res.ok) {
       const data = await res.json();
       starsBalance = data.stars_balance || 0;
@@ -696,20 +697,22 @@ async function loadBalance() {
   if (!pill || !amount || !icon) return;
 
   try {
-    if (isAdmin) {
-      const res = await fetch('/api/balance');
-      if (!res.ok) return;
-      const data = await res.json();
-      const total = (parseFloat(data.balance) || 0) + (parseFloat(data.purchase_balance) || 0);
-      icon.textContent = '💰';
-      amount.textContent = Math.round(total) + '₽';
-    } else {
-      const res = await fetch('/api/user/balance');
-      if (!res.ok) return;
-      const data = await res.json();
-      icon.textContent = '⭐';
-      amount.textContent = data.stars_balance || 0;
+    // Get user ID from Telegram or API
+    const tgUser = tg?.initDataUnsafe?.user;
+    let uid = tgUser?.id || '';
+    if (!uid) {
+      try {
+        const meRes = await fetch('/api/me');
+        if (meRes.ok) { const me = await meRes.json(); uid = me.user_id || ''; }
+      } catch { /* ignore */ }
     }
+
+    const url = uid ? `/api/user/balance?user_id=${uid}` : '/api/user/balance';
+    const res = await fetch(url);
+    if (!res.ok) return;
+    const data = await res.json();
+    icon.textContent = '⭐';
+    amount.textContent = data.stars_balance || 0;
     pill.style.display = '';
   } catch { /* ignore */ }
 }
