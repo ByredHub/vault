@@ -219,8 +219,8 @@ async def purchase_item(request: web.Request) -> web.Response:
         )
         logger.info("Order #%d created for item #%d", order_id, item_id)
 
-        # 5. Purchase on LZT via safe flow: Reserve → Check → Confirm
-        logger.info("Starting safe purchase for item #%d (price: %.2f)...", item_id, original_price)
+        # 5. Purchase on LZT via fast-buy (includes account validation!)
+        logger.info("Starting fast-buy for item #%d (price: %.2f)...", item_id, original_price)
 
         # Use StreamResponse to send real-time progress
         resp = web.StreamResponse(
@@ -235,69 +235,17 @@ async def purchase_item(request: web.Request) -> web.Response:
             await resp.write((line + "\n").encode())
 
         try:
-            # Step A: Reserve
-            await send_step("reserve", "Резервируем аккаунт...")
-            try:
-                await lzt_api.reserve_item(item_id, original_price)
-                logger.info("Item #%d reserved", item_id)
-            except Exception as e:
-                logger.error("Reserve failed for #%d: %s", item_id, e)
-                from bot.db import deposit_stars
-                await deposit_stars(user_id, stars_needed)
-                await update_order_status(order_id, "error", error_message=f"Резерв: {e}")
-                CATALOG_CACHE.clear()
-                await send_step("error", f"Не удалось зарезервировать: {_parse_lzt_error(e)}")
-                await resp.write_eof()
-                return resp
-
-            # Step B: Check validity
             await send_step("check", "Проверяем аккаунт...")
-            try:
-                check_result = await lzt_api.check_item(item_id)
-                is_valid = check_result.get("item", {}).get("account_is_valid", False)
-                if not is_valid:
-                    logger.warning("Item #%d failed validation", item_id)
-                    await lzt_api.cancel_reserve(item_id)
-                    from bot.db import deposit_stars
-                    await deposit_stars(user_id, stars_needed)
-                    await update_order_status(order_id, "error", error_message="Аккаунт не прошёл проверку")
-                    CATALOG_CACHE.clear()
-                    await send_step("error", "Аккаунт не прошёл проверку. Stars возвращены ⭐")
-                    await resp.write_eof()
-                    return resp
-                logger.info("Item #%d passed validation ✓", item_id)
-            except Exception as e:
-                logger.error("Check failed for #%d: %s", item_id, e)
-                try:
-                    await lzt_api.cancel_reserve(item_id)
-                except Exception:
-                    pass
-                from bot.db import deposit_stars
-                await deposit_stars(user_id, stars_needed)
-                await update_order_status(order_id, "error", error_message=f"Проверка: {e}")
-                await send_step("error", f"Ошибка проверки: {_parse_lzt_error(e)}")
-                await resp.write_eof()
-                return resp
-
-            # Step C: Confirm purchase
             await send_step("confirm", "Оформляем покупку...")
-            try:
-                result = await lzt_api.confirm_buy(item_id)
-            except Exception as e:
-                logger.error("Confirm failed for #%d: %s", item_id, e)
-                from bot.db import deposit_stars
-                await deposit_stars(user_id, stars_needed)
-                await update_order_status(order_id, "error", error_message=f"Подтверждение: {e}")
-                await send_step("error", f"Ошибка подтверждения: {_parse_lzt_error(e)}")
-                await resp.write_eof()
-                return resp
-
-        except Exception as general_err:
-            logger.error("Purchase flow error: %s", general_err)
+            result = await lzt_api.fast_buy(item_id, original_price)
+        except Exception as buy_err:
+            logger.error("Fast-buy failed for item #%d: %s", item_id, buy_err)
             from bot.db import deposit_stars
             await deposit_stars(user_id, stars_needed)
-            await update_order_status(order_id, "error", error_message=str(general_err))
-            await send_step("error", f"Ошибка: {_parse_lzt_error(general_err)}")
+            logger.info("Refunded %d Stars to user %d", stars_needed, user_id)
+            await update_order_status(order_id, "error", error_message=str(buy_err))
+            CATALOG_CACHE.clear()
+            await send_step("error", _parse_lzt_error(buy_err))
             await resp.write_eof()
             return resp
 
