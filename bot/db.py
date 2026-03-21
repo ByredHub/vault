@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-DB_PATH = Path(__file__).parent.parent.parent / "data.db"
+DB_PATH = Path(__file__).parent.parent / "data.db"
 
 
 async def get_db() -> aiosqlite.Connection:

@@ -1,10 +1,10 @@
 """
-Telegram Bot handlers — /start, inline buttons, payment callbacks.
+Telegram Bot handlers — commands, inline buttons, Stars topup and payment.
 """
 import json
 import logging
 
-from aiogram import Bot, Dispatcher, Router, F
+from aiogram import Router, F
 from aiogram.filters import Command, CommandStart
 from aiogram.types import (
     Message,
@@ -18,12 +18,16 @@ from aiogram.types import (
 from aiogram.enums import ParseMode
 
 from bot.config import settings
-from bot.db import upsert_user, get_order, update_order_status, get_stats
+from bot.db import (
+    upsert_user, get_order, update_order_status, get_stats,
+    get_user_orders, get_user_balance, deposit_stars,
+)
 from bot.services.lzt_api import lzt_api
-from bot.services.payments import get_available_providers
 
 logger = logging.getLogger(__name__)
 router = Router()
+
+WEBAPP_URL = settings.webapp_url
 
 
 # ═══════════════════════════════════════
@@ -32,107 +36,305 @@ router = Router()
 
 @router.message(CommandStart())
 async def cmd_start(message: Message) -> None:
-    """Handle /start command — show welcome + Mini App button."""
+    """Handle /start — welcome message with inline keyboard."""
     user = message.from_user
     if not user:
         return
 
     await upsert_user(user.id, user.username, user.first_name)
 
-    webapp_url = settings.webapp_url
-
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+    kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
             text="🛒 Открыть магазин",
-            web_app=WebAppInfo(url=webapp_url),
+            web_app=WebAppInfo(url=WEBAPP_URL),
         )],
-        [InlineKeyboardButton(text="📦 Мои заказы", callback_data="my_orders")],
-        [InlineKeyboardButton(text="💬 Поддержка", callback_data="support")],
+        [
+            InlineKeyboardButton(text="💰 Баланс", callback_data="balance"),
+            InlineKeyboardButton(text="📦 Заказы", callback_data="my_orders"),
+        ],
+        [
+            InlineKeyboardButton(text="⭐ Пополнить Stars", callback_data="topup"),
+            InlineKeyboardButton(text="❓ Помощь", callback_data="help"),
+        ],
     ])
 
-    # Add admin button
     if settings.is_admin(user.id):
-        keyboard.inline_keyboard.append([
+        kb.inline_keyboard.append([
             InlineKeyboardButton(
                 text="⚙️ Админ-панель",
-                web_app=WebAppInfo(url=f"{webapp_url}#admin"),
+                web_app=WebAppInfo(url=f"{WEBAPP_URL}#admin"),
             )
         ])
 
     await message.answer(
-        "🏪 <b>LZT Market Store</b>\n\n"
-        "Добро пожаловать в магазин аккаунтов!\n\n"
-        "🎮 Steam, Fortnite, Genshin Impact и другие\n"
-        "✅ Проверка аккаунтов перед покупкой\n"
-        "🔒 Гарантия на каждую покупку\n"
-        "⚡ Моментальная выдача\n\n"
-        "Нажми кнопку ниже, чтобы открыть магазин 👇",
-        reply_markup=keyboard,
-        parse_mode=ParseMode.HTML,
+        f"👋 Привет, <b>{user.first_name}</b>!\n\n"
+        "🏪 <b>VAULT</b> — магазин аккаунтов\n\n"
+        "🎮 Steam, Telegram, Fortnite и другие\n"
+        "✅ Проверка перед покупкой\n"
+        "⚡ Моментальная выдача\n"
+        "🔒 Гарантия на каждый аккаунт\n\n"
+        "Жми кнопку ниже, чтобы начать 👇",
+        reply_markup=kb,
     )
 
 
 # ═══════════════════════════════════════
-# Callback: My Orders
+# /help
 # ═══════════════════════════════════════
 
-@router.callback_query(F.data == "my_orders")
-async def cb_my_orders(callback: CallbackQuery) -> None:
-    """Show user's recent orders."""
-    from bot.db import get_user_orders
+@router.message(Command("help"))
+async def cmd_help(message: Message) -> None:
+    """Show available commands."""
+    await message.answer(
+        "📋 <b>Доступные команды:</b>\n\n"
+        "/start — Главное меню\n"
+        "/shop — Открыть магазин\n"
+        "/balance — Проверить баланс Stars\n"
+        "/topup — Пополнить баланс Stars\n"
+        "/orders — Мои заказы\n"
+        "/help — Эта справка\n"
+    )
+
+
+@router.callback_query(F.data == "help")
+async def cb_help(callback: CallbackQuery) -> None:
+    """Inline help button."""
+    await callback.answer()
+    await callback.message.answer(
+        "📋 <b>Как купить аккаунт:</b>\n\n"
+        "1️⃣ Пополни баланс Stars → /topup\n"
+        "2️⃣ Открой магазин → /shop\n"
+        "3️⃣ Выбери аккаунт и нажми «Купить»\n"
+        "4️⃣ Stars спишутся, аккаунт будет выдан моментально\n\n"
+        "💡 <b>Курс:</b> 1 ⭐ = 1.6 ₽\n\n"
+        "Вопросы? Напиши /help или обратись в поддержку.",
+    )
+
+
+# ═══════════════════════════════════════
+# /shop — open Mini App
+# ═══════════════════════════════════════
+
+@router.message(Command("shop"))
+async def cmd_shop(message: Message) -> None:
+    """Open the shop Mini App."""
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="🛒 Открыть магазин",
+            web_app=WebAppInfo(url=WEBAPP_URL),
+        )],
+    ])
+    await message.answer("🛒 Нажми кнопку, чтобы открыть магазин:", reply_markup=kb)
+
+
+# ═══════════════════════════════════════
+# /balance — check Stars balance
+# ═══════════════════════════════════════
+
+@router.message(Command("balance"))
+async def cmd_balance(message: Message) -> None:
+    """Show user's Stars balance."""
+    user = message.from_user
+    if not user:
+        return
+
+    balance = await get_user_balance(user.id)
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⭐ Пополнить", callback_data="topup")],
+        [InlineKeyboardButton(
+            text="🛒 Магазин",
+            web_app=WebAppInfo(url=WEBAPP_URL),
+        )],
+    ])
+
+    await message.answer(
+        f"💰 <b>Ваш баланс:</b> ⭐ {balance} Stars\n\n"
+        f"💡 Это примерно {round(balance * 1.6)} ₽\n\n"
+        "Чтобы пополнить, нажми кнопку ниже 👇",
+        reply_markup=kb,
+    )
+
+
+@router.callback_query(F.data == "balance")
+async def cb_balance(callback: CallbackQuery) -> None:
+    """Inline balance button."""
     user = callback.from_user
     if not user:
         return
 
-    orders = await get_user_orders(user.id, limit=5)
-
-    if not orders:
-        await callback.answer("У вас пока нет заказов", show_alert=True)
-        return
-
-    status_emoji = {
-        "pending": "⏳",
-        "awaiting_payment": "💳",
-        "paid": "✅",
-        "purchasing": "🔄",
-        "completed": "🎉",
-        "error": "❌",
-        "cancelled": "🚫",
-    }
-
-    text = "📦 <b>Ваши заказы:</b>\n\n"
-    for order in orders:
-        emoji = status_emoji.get(order["status"], "❓")
-        text += (
-            f"{emoji} <b>#{order['id']}</b> — {order['item_title'][:40]}\n"
-            f"   Цена: {order['sell_price']}₽ | Статус: {order['status']}\n\n"
-        )
-
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text="🛒 В магазин",
-            web_app=WebAppInfo(url=settings.webapp_url),
-        )],
-    ])
-
-    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+    balance = await get_user_balance(user.id)
+    await callback.answer(f"⭐ Баланс: {balance} Stars (~{round(balance * 1.6)}₽)", show_alert=True)
 
 
 # ═══════════════════════════════════════
-# Callback: Support
+# /topup — Stars top-up via Telegram payment
 # ═══════════════════════════════════════
 
-@router.callback_query(F.data == "support")
-async def cb_support(callback: CallbackQuery) -> None:
-    """Show support info."""
-    await callback.answer(
-        "Для поддержки напишите @ваш_юзернейм",
-        show_alert=True,
+TOPUP_OPTIONS = [
+    (50, "50 ⭐ (~80₽)"),
+    (100, "100 ⭐ (~160₽)"),
+    (250, "250 ⭐ (~400₽)"),
+    (500, "500 ⭐ (~800₽)"),
+    (1000, "1000 ⭐ (~1600₽)"),
+]
+
+
+@router.message(Command("topup"))
+async def cmd_topup(message: Message) -> None:
+    """Show top-up options."""
+    await _show_topup_menu(message)
+
+
+@router.callback_query(F.data == "topup")
+async def cb_topup(callback: CallbackQuery) -> None:
+    """Inline topup button."""
+    await callback.answer()
+    await _show_topup_menu(callback.message, edit=False)
+
+
+async def _show_topup_menu(message: Message, edit: bool = False) -> None:
+    """Render top-up amount selection."""
+    buttons = []
+    for amount, label in TOPUP_OPTIONS:
+        buttons.append([
+            InlineKeyboardButton(text=f"⭐ {label}", callback_data=f"topup:{amount}")
+        ])
+    buttons.append([InlineKeyboardButton(text="↩️ Назад", callback_data="back_start")])
+
+    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+
+    text = (
+        "⭐ <b>Пополнение баланса</b>\n\n"
+        "Выбери сумму пополнения.\n"
+        "Оплата через Telegram Stars.\n\n"
+        "💡 <b>Курс:</b> 1 ⭐ = 1.6 ₽"
+    )
+
+    if edit:
+        await message.edit_text(text, reply_markup=kb)
+    else:
+        await message.answer(text, reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("topup:"))
+async def cb_topup_amount(callback: CallbackQuery) -> None:
+    """User selected a top-up amount — send Telegram Stars invoice."""
+    amount = int(callback.data.split(":")[1])
+
+    await callback.answer()
+
+    # Send Stars invoice via Telegram Payments
+    await callback.message.answer_invoice(
+        title=f"Пополнение ⭐ {amount} Stars",
+        description=f"Пополнение баланса VAULT на {amount} Stars (~{round(amount * 1.6)}₽)",
+        payload=json.dumps({"type": "topup", "stars": amount}),
+        currency="XTR",  # Telegram Stars currency
+        prices=[LabeledPrice(label=f"{amount} Stars", amount=amount)],
     )
 
 
 # ═══════════════════════════════════════
-# Telegram Stars Payment
+# /orders — recent orders
+# ═══════════════════════════════════════
+
+@router.message(Command("orders"))
+async def cmd_orders(message: Message) -> None:
+    """Show recent orders."""
+    user = message.from_user
+    if not user:
+        return
+    await _show_orders(message, user.id)
+
+
+@router.callback_query(F.data == "my_orders")
+async def cb_my_orders(callback: CallbackQuery) -> None:
+    """Inline orders button."""
+    user = callback.from_user
+    if not user:
+        return
+    await callback.answer()
+    await _show_orders(callback.message, user.id, edit=False)
+
+
+async def _show_orders(message: Message, user_id: int, edit: bool = False) -> None:
+    """Render order list."""
+    orders = await get_user_orders(user_id, limit=10)
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="🛒 В магазин",
+            web_app=WebAppInfo(url=WEBAPP_URL),
+        )],
+    ])
+
+    if not orders:
+        text = "📦 У вас пока нет заказов.\n\nОткройте магазин и выберите аккаунт!"
+    else:
+        status_emoji = {
+            "pending": "⏳", "awaiting_payment": "💳",
+            "paid": "✅", "completed": "🎉",
+            "error": "❌", "cancelled": "🚫",
+        }
+        text = "📦 <b>Ваши заказы:</b>\n\n"
+        for o in orders:
+            emoji = status_emoji.get(o["status"], "❓")
+            text += (
+                f"{emoji} <b>#{o['id']}</b> — {o['item_title'][:35]}\n"
+                f"   💰 {o['sell_price']:.0f}₽ · {o['status']}\n\n"
+            )
+
+    if edit:
+        await message.edit_text(text, reply_markup=kb)
+    else:
+        await message.answer(text, reply_markup=kb)
+
+
+# ═══════════════════════════════════════
+# Back to start
+# ═══════════════════════════════════════
+
+@router.callback_query(F.data == "back_start")
+async def cb_back_start(callback: CallbackQuery) -> None:
+    """Go back to main menu."""
+    await callback.answer()
+    user = callback.from_user
+    if not user:
+        return
+    # Rebuild start keyboard
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="🛒 Открыть магазин",
+            web_app=WebAppInfo(url=WEBAPP_URL),
+        )],
+        [
+            InlineKeyboardButton(text="💰 Баланс", callback_data="balance"),
+            InlineKeyboardButton(text="📦 Заказы", callback_data="my_orders"),
+        ],
+        [
+            InlineKeyboardButton(text="⭐ Пополнить Stars", callback_data="topup"),
+            InlineKeyboardButton(text="❓ Помощь", callback_data="help"),
+        ],
+    ])
+
+    if settings.is_admin(user.id):
+        kb.inline_keyboard.append([
+            InlineKeyboardButton(
+                text="⚙️ Админ-панель",
+                web_app=WebAppInfo(url=f"{WEBAPP_URL}#admin"),
+            )
+        ])
+
+    await callback.message.edit_text(
+        f"👋 Привет, <b>{user.first_name}</b>!\n\n"
+        "🏪 <b>VAULT</b> — магазин аккаунтов\n\n"
+        "Жми кнопку ниже, чтобы начать 👇",
+        reply_markup=kb,
+    )
+
+
+# ═══════════════════════════════════════
+# Telegram Stars Payment Processing
 # ═══════════════════════════════════════
 
 @router.pre_checkout_query()
@@ -143,13 +345,44 @@ async def pre_checkout(query: PreCheckoutQuery) -> None:
 
 @router.message(F.successful_payment)
 async def successful_payment(message: Message) -> None:
-    """Handle successful Stars payment."""
+    """Handle successful Stars payment — deposit to user balance."""
     payment = message.successful_payment
     if not payment or not payment.invoice_payload:
         return
 
+    user = message.from_user
+    if not user:
+        return
+
     try:
         payload = json.loads(payment.invoice_payload)
+
+        # Top-up flow
+        if payload.get("type") == "topup":
+            stars = payload.get("stars", 0)
+            if stars <= 0:
+                return
+
+            new_balance = await deposit_stars(user.id, stars)
+            logger.info("User %d topped up %d Stars, new balance: %d", user.id, stars, new_balance)
+
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(
+                    text="🛒 Перейти в магазин",
+                    web_app=WebAppInfo(url=WEBAPP_URL),
+                )],
+            ])
+
+            await message.answer(
+                f"✅ <b>Баланс пополнен!</b>\n\n"
+                f"➕ Зачислено: ⭐ {stars} Stars\n"
+                f"💰 Текущий баланс: ⭐ {new_balance} Stars\n\n"
+                f"Теперь можешь покупать аккаунты в магазине! 🛒",
+                reply_markup=kb,
+            )
+            return
+
+        # Direct purchase flow (legacy)
         order_id = payload.get("order_id")
         if not order_id:
             return
@@ -158,35 +391,28 @@ async def successful_payment(message: Message) -> None:
         if not order:
             return
 
-        # Mark as paid
         await update_order_status(order_id, "paid")
 
-        # Purchase on LZT
         try:
-            result = await lzt_api.safe_purchase(order["lzt_item_id"], order["original_price"])
+            result = await lzt_api.fast_buy(order["lzt_item_id"], order["original_price"])
             account_data = json.dumps(result.get("item", {}), ensure_ascii=False)
             await update_order_status(order_id, "completed", account_data=account_data)
 
             await message.answer(
                 f"🎉 <b>Покупка успешна!</b>\n\n"
                 f"Заказ #{order_id} выполнен.\n"
-                f"Данные аккаунта отправлены в магазин.\n\n"
-                f"Откройте магазин → Мои заказы для просмотра.",
-                parse_mode=ParseMode.HTML,
+                f"Данные аккаунта в магазине → Мои заказы.",
             )
         except Exception as e:
             await update_order_status(order_id, "error", error_message=str(e))
-            await message.answer(
-                f"❌ Ошибка покупки: {e}\n\nСвяжитесь с поддержкой.",
-                parse_mode=ParseMode.HTML,
-            )
+            await message.answer(f"❌ Ошибка покупки: {e}\n\nСвяжитесь с поддержкой.")
 
     except Exception as e:
-        logger.error("Stars payment processing error: %s", e)
+        logger.error("Stars payment processing error: %s", e, exc_info=True)
 
 
 # ═══════════════════════════════════════
-# Admin command
+# /admin — quick stats in chat
 # ═══════════════════════════════════════
 
 @router.message(Command("admin"))
@@ -198,21 +424,54 @@ async def cmd_admin(message: Message) -> None:
 
     stats = await get_stats()
 
+    # Get LZT balance
+    lzt_balance = 0
+    try:
+        me = await lzt_api.get_me()
+        lzt_balance = me.get("user", {}).get("balance", 0)
+    except Exception:
+        pass
+
     text = (
-        "📊 <b>Статистика</b>\n\n"
+        "📊 <b>Статистика VAULT</b>\n\n"
         f"👥 Пользователей: {stats['total_users']}\n"
         f"📦 Всего заказов: {stats['total_orders']}\n"
         f"✅ Выполнено: {stats['completed_orders']}\n"
-        f"💰 Общий профит: {stats['total_profit']:.2f}₽\n"
+        f"💰 Профит: {stats['total_profit']:.2f}₽\n"
         f"💵 Оборот: {stats['total_revenue']:.2f}₽\n\n"
-        f"📅 Сегодня: {stats['today_orders']} заказов, {stats['today_profit']:.2f}₽ профита"
+        f"📅 Сегодня: {stats['today_orders']} зак. · {stats['today_profit']:.2f}₽\n"
+        f"🏦 Баланс LZT: {lzt_balance}₽\n"
     )
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+    kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
             text="⚙️ Админ-панель",
-            web_app=WebAppInfo(url=f"{settings.webapp_url}#admin"),
+            web_app=WebAppInfo(url=f"{WEBAPP_URL}#admin"),
         )],
     ])
 
-    await message.answer(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+    await message.answer(text, reply_markup=kb)
+
+
+# ═══════════════════════════════════════
+# Unhandled messages
+# ═══════════════════════════════════════
+
+@router.message()
+async def unhandled_message(message: Message) -> None:
+    """Catch-all for messages without a command."""
+    if message.text and message.text.startswith("/"):
+        await message.answer("❓ Неизвестная команда. Попробуй /help")
+        return
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="🛒 Открыть магазин",
+            web_app=WebAppInfo(url=WEBAPP_URL),
+        )],
+    ])
+    await message.answer(
+        "Привет! Я бот магазина VAULT.\n"
+        "Используй /start или кнопку ниже 👇",
+        reply_markup=kb,
+    )

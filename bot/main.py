@@ -10,6 +10,7 @@ from pathlib import Path
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
+from aiogram.types import BotCommand
 from aiohttp import web
 
 # Ensure project root is in path
@@ -30,18 +31,35 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+BOT_COMMANDS = [
+    BotCommand(command="start", description="Главное меню"),
+    BotCommand(command="shop", description="Открыть магазин"),
+    BotCommand(command="balance", description="Баланс Stars"),
+    BotCommand(command="topup", description="Пополнить Stars"),
+    BotCommand(command="orders", description="Мои заказы"),
+    BotCommand(command="help", description="Помощь"),
+]
+
+
 async def on_startup(bot: Bot) -> None:
     """Startup tasks."""
     logger.info("Initializing database...")
     await init_db()
 
+    # Register bot commands
+    await bot.set_my_commands(BOT_COMMANDS)
+    logger.info("Bot commands registered")
+
     # Check LZT connection
     try:
         me = await lzt_api.get_me()
         balance = me.get("user", {}).get("balance", 0)
-        logger.info("LZT Market connected. Balance: %.2f", balance)
+        logger.info("LZT Market connected. Balance: %.2f₽", balance)
     except Exception as e:
         logger.warning("LZT Market connection check failed: %s", e)
+
+    # Detect purchase balance for fast-buy
+    await lzt_api.init_purchase_balance()
 
     logger.info("Bot started successfully!")
     logger.info("Admin IDs: %s", settings.admin_id_list)
@@ -71,7 +89,7 @@ async def main() -> None:
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", 8081)
     await site.start()
-    logger.info("Web API started on http://0.0.0.0:8080")
+    logger.info("Web API started on http://0.0.0.0:8081")
 
     # Start polling
     try:
