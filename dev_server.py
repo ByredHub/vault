@@ -17,7 +17,10 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from bot.services.lzt_api import lzt_api
 from bot.config import settings
-from bot.db import init_db, create_order, update_order_status, get_user_orders, upsert_user
+from bot.db import (
+    init_db, create_order, update_order_status, get_user_orders,
+    upsert_user, get_all_orders, get_all_users, get_stats,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -215,6 +218,38 @@ async def get_balance(request: web.Request) -> web.Response:
 
 
 # ═══════════════════════════════════════
+# Admin endpoints
+# ═══════════════════════════════════════
+
+async def admin_stats(request: web.Request) -> web.Response:
+    """Get admin dashboard stats."""
+    try:
+        stats = await get_stats()
+        # Add LZT balance
+        try:
+            me = await lzt_api.get_me()
+            stats["lzt_balance"] = me.get("user", {}).get("balance", 0)
+        except Exception:
+            stats["lzt_balance"] = 0
+        return web.json_response(stats)
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+
+async def admin_orders(request: web.Request) -> web.Response:
+    """Get all orders for admin."""
+    status = request.query.get("status")
+    orders = await get_all_orders(status=status)
+    return web.json_response({"orders": orders})
+
+
+async def admin_users(request: web.Request) -> web.Response:
+    """Get all users for admin."""
+    users = await get_all_users()
+    return web.json_response({"users": users})
+
+
+# ═══════════════════════════════════════
 # CORS + Static
 # ═══════════════════════════════════════
 
@@ -260,6 +295,9 @@ def create_app() -> web.Application:
     app.router.add_post("/api/purchase", purchase_item)
     app.router.add_get("/api/orders/my", get_orders)
     app.router.add_get("/api/balance", get_balance)
+    app.router.add_get("/api/admin/stats", admin_stats)
+    app.router.add_get("/api/admin/orders", admin_orders)
+    app.router.add_get("/api/admin/users", admin_users)
 
     # Serve webapp static files
     if WEBAPP_DIR.exists():

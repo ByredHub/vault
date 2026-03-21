@@ -540,6 +540,22 @@ function init() {
   });
   initFilters();
   navigateTo('catalog');
+  loadBalance();
+}
+
+async function loadBalance() {
+  try {
+    const res = await fetch('/api/balance');
+    if (!res.ok) return;
+    const data = await res.json();
+    const bal = parseFloat(data.balance) || 0;
+    const pill = document.getElementById('balance-pill');
+    const amount = document.getElementById('balance-amount');
+    if (pill && amount) {
+      amount.textContent = `$${bal.toFixed(2)}`;
+      pill.style.display = '';
+    }
+  } catch { /* ignore */ }
 }
 
 document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', init) : init();
