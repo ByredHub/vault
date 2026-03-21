@@ -18,7 +18,6 @@ const tg = window.Telegram?.WebApp;
 let isAdmin = false;
 
 async function initTelegram() {
-  if (tg) { tg.ready(); tg.expand(); tg.enableClosingConfirmation(); }
   // Check admin status from server
   try {
     const uid = tg?.initDataUnsafe?.user?.id || '';
@@ -539,8 +538,10 @@ function initFilters() {
   });
 }
 
-async function init() {
-  await initTelegram();
+function init() {
+  // Fire telegram check in background — don't block UI
+  if (tg) { tg.ready(); tg.expand(); tg.enableClosingConfirmation(); }
+  initTelegram(); // async, non-blocking
   document.querySelectorAll('.bnav-tab').forEach(t => t.addEventListener('click', () => navigateTo(t.dataset.page)));
   let timer;
   document.getElementById('catalog-search')?.addEventListener('input', e => {
