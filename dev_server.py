@@ -419,11 +419,36 @@ async def user_balance(request: web.Request) -> web.Response:
 
 async def get_me(request: web.Request) -> web.Response:
     """Get current user info + admin check."""
-    raw = request.query.get("user_id", "")
-    try:
-        user_id = int(raw) if raw else DEV_USER["id"]
-    except ValueError:
-        user_id = DEV_USER["id"]
+    user_id = None
+
+    # 1. Try Telegram initData header
+    init_data = request.headers.get("X-Telegram-Init-Data", "")
+    if init_data:
+        import json as _json
+        from urllib.parse import parse_qs, unquote
+        parsed = parse_qs(init_data)
+        user_raw = parsed.get("user", [None])[0]
+        if user_raw:
+            try:
+                tg_user = _json.loads(unquote(user_raw))
+                user_id = tg_user.get("id")
+            except Exception:
+                pass
+
+    # 2. Try query param
+    if not user_id:
+        raw = request.query.get("user_id", "")
+        if raw:
+            try:
+                user_id = int(raw)
+            except ValueError:
+                pass
+
+    # 3. Fallback to first admin ID (the real owner)
+    if not user_id:
+        admin_list = [int(x.strip()) for x in settings.admin_ids.split(",") if x.strip()]
+        user_id = admin_list[0] if admin_list else DEV_USER["id"]
+
     admin_ids = [int(x.strip()) for x in settings.admin_ids.split(",") if x.strip()]
     return web.json_response({
         "user_id": user_id,
