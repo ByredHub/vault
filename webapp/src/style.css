@@ -824,3 +824,15 @@ a{text-decoration:none;color:inherit}
   text-align:center;padding:16px 0 8px;
   font-size:.625rem;color:var(--t5);
 }
+
+/* Admin pill tabs */
+.adm-pill{
+  flex:1;padding:8px 0;border:none;border-radius:8px;
+  background:transparent;color:var(--t3);
+  font-size:.75rem;font-weight:600;cursor:pointer;
+  transition:all .2s;
+}
+.adm-pill-active{
+  background:var(--raised);color:var(--t1);
+  box-shadow:0 1px 3px rgba(0,0,0,.3);
+}

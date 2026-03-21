@@ -22,6 +22,8 @@ from bot.db import (
     init_db, create_order, update_order_status, get_user_orders,
     upsert_user, get_all_orders, get_all_users, get_stats, get_user_balance,
     deposit_stars, get_order,
+    create_ticket, get_user_tickets, get_ticket_detail, add_ticket_message,
+    close_ticket, get_all_tickets,
 )
 
 logging.basicConfig(
@@ -599,44 +601,114 @@ async def get_me(request: web.Request) -> web.Response:
 # ═══════════════════════════════════════
 
 async def support_message(request: web.Request) -> web.Response:
-    """Receive support message from webapp and forward to admins via Telegram."""
+    """Create a support ticket and notify admins."""
     try:
         body = await request.json()
     except Exception:
         return web.json_response({"error": "Invalid JSON"}, status=400)
 
-    user_id = body.get("user_id", "unknown")
+    user_id = body.get("user_id", 0)
+    try:
+        user_id = int(user_id)
+    except (ValueError, TypeError):
+        user_id = 0
+    subject = (body.get("subject") or "Обращение в поддержку").strip()[:200]
     message = (body.get("message") or "").strip()
     if not message:
         return web.json_response({"error": "Empty message"}, status=400)
     if len(message) > 2000:
         message = message[:2000]
 
+    # attachments is a JSON array of base64 image strings
+    attachments = body.get("attachments")  # JSON string or None
+
+    ticket_id = await create_ticket(user_id, subject, message, attachments)
+
+    # Notify admins via Telegram
     admin_ids = [int(x.strip()) for x in settings.admin_ids.split(",") if x.strip()]
     bot_token = settings.bot_token
-
     text = (
-        f"📩 <b>Запрос в поддержку</b>\n\n"
+        f"📩 <b>Новый тикет #{ticket_id}</b>\n\n"
         f"👤 User ID: <code>{user_id}</code>\n"
-        f"💬 Сообщение:\n{message}"
+        f"📋 {subject}\n\n"
+        f"💬 {message[:500]}"
     )
-
     if bot_token and admin_ids:
         import aiohttp as _aio
         url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
         async with _aio.ClientSession() as s:
             for aid in admin_ids:
                 try:
-                    await s.post(url, json={
-                        "chat_id": aid,
-                        "text": text,
-                        "parse_mode": "HTML",
-                    })
-                except Exception as e:
-                    logger.warning("Failed to send support msg to admin %s: %s", aid, e)
+                    await s.post(url, json={"chat_id": aid, "text": text, "parse_mode": "HTML"})
+                except Exception:
+                    pass
 
-    logger.info("Support message from user %s: %s", user_id, message[:100])
+    return web.json_response({"status": "created", "ticket_id": ticket_id})
+
+
+async def tickets_list(request: web.Request) -> web.Response:
+    """Get user's tickets."""
+    uid = request.query.get("user_id", "0")
+    try:
+        uid = int(uid)
+    except ValueError:
+        uid = 0
+    tickets = await get_user_tickets(uid)
+    return web.json_response({"tickets": tickets})
+
+
+async def ticket_detail(request: web.Request) -> web.Response:
+    """Get ticket with messages."""
+    tid = int(request.match_info["id"])
+    ticket = await get_ticket_detail(tid)
+    if not ticket:
+        return web.json_response({"error": "Not found"}, status=404)
+    return web.json_response(ticket)
+
+
+async def ticket_reply(request: web.Request) -> web.Response:
+    """Add reply to ticket (admin or user)."""
+    tid = int(request.match_info["id"])
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    sender = body.get("sender", "admin")  # 'admin' or 'user'
+    message = (body.get("message") or "").strip()
+    if not message:
+        return web.json_response({"error": "Empty message"}, status=400)
+    attachments = body.get("attachments")
+
+    await add_ticket_message(tid, sender, message, attachments)
+
+    # If admin replies, notify user via Telegram
+    if sender == "admin":
+        ticket = await get_ticket_detail(tid)
+        if ticket and settings.bot_token:
+            import aiohttp as _aio
+            text = f"💬 <b>Ответ поддержки</b> (Тикет #{tid})\n\n{message[:500]}"
+            url = f"https://api.telegram.org/bot{settings.bot_token}/sendMessage"
+            async with _aio.ClientSession() as s:
+                try:
+                    await s.post(url, json={"chat_id": ticket["user_id"], "text": text, "parse_mode": "HTML"})
+                except Exception:
+                    pass
+
     return web.json_response({"status": "sent"})
+
+
+async def ticket_close(request: web.Request) -> web.Response:
+    """Close a ticket."""
+    tid = int(request.match_info["id"])
+    await close_ticket(tid)
+    return web.json_response({"status": "closed"})
+
+
+async def admin_tickets(request: web.Request) -> web.Response:
+    """Get all tickets (admin)."""
+    tickets = await get_all_tickets()
+    return web.json_response({"tickets": tickets})
 
 
 # ═══════════════════════════════════════
@@ -697,6 +769,11 @@ def create_app() -> web.Application:
     app.router.add_get("/api/user/balance", user_balance)
     app.router.add_get("/api/me", get_me)
     app.router.add_post("/api/support", support_message)
+    app.router.add_get("/api/tickets", tickets_list)
+    app.router.add_get("/api/tickets/{id}", ticket_detail)
+    app.router.add_post("/api/tickets/{id}/reply", ticket_reply)
+    app.router.add_post("/api/tickets/{id}/close", ticket_close)
+    app.router.add_get("/api/admin/tickets", admin_tickets)
 
     # Serve webapp static files
     if WEBAPP_DIR.exists():

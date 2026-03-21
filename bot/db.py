@@ -72,6 +72,30 @@ async def init_db() -> None:
             await db.commit()
         except Exception:
             pass  # column already exists
+
+        # Migrate: tickets table
+        await db.executescript("""
+            CREATE TABLE IF NOT EXISTS tickets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                subject TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'open',
+                created_at INTEGER NOT NULL DEFAULT 0,
+                updated_at INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS ticket_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticket_id INTEGER NOT NULL,
+                sender TEXT NOT NULL DEFAULT 'user',
+                message TEXT NOT NULL DEFAULT '',
+                attachments TEXT,
+                created_at INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY (ticket_id) REFERENCES tickets(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_tickets_user ON tickets(user_id);
+            CREATE INDEX IF NOT EXISTS idx_tmsg_ticket ON ticket_messages(ticket_id);
+        """)
+        await db.commit()
     finally:
         await db.close()
 
@@ -367,5 +391,102 @@ async def get_stats() -> dict:
         stats["today_profit"] = row["profit"] if row else 0.0
 
         return stats
+    finally:
+        await db.close()
+
+
+# ═══════════════════════════════════════
+# Ticket operations
+# ═══════════════════════════════════════
+
+async def create_ticket(user_id: int, subject: str, message: str, attachments: Optional[str] = None) -> int:
+    """Create a new support ticket with initial message."""
+    now = int(time.time())
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "INSERT INTO tickets (user_id, subject, status, created_at, updated_at) VALUES (?, ?, 'open', ?, ?)",
+            (user_id, subject, now, now),
+        )
+        ticket_id = cursor.lastrowid
+        await db.execute(
+            "INSERT INTO ticket_messages (ticket_id, sender, message, attachments, created_at) VALUES (?, 'user', ?, ?, ?)",
+            (ticket_id, message, attachments, now),
+        )
+        await db.commit()
+        return ticket_id
+    finally:
+        await db.close()
+
+
+async def get_user_tickets(user_id: int) -> list[dict]:
+    """Get all tickets for a user."""
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT * FROM tickets WHERE user_id = ? ORDER BY updated_at DESC",
+            (user_id,),
+        )
+        return [dict(r) for r in await cursor.fetchall()]
+    finally:
+        await db.close()
+
+
+async def get_ticket_detail(ticket_id: int) -> Optional[dict]:
+    """Get ticket with all messages."""
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM tickets WHERE id = ?", (ticket_id,))
+        ticket = await cursor.fetchone()
+        if not ticket:
+            return None
+        result = dict(ticket)
+        cursor2 = await db.execute(
+            "SELECT * FROM ticket_messages WHERE ticket_id = ? ORDER BY created_at ASC",
+            (ticket_id,),
+        )
+        result["messages"] = [dict(r) for r in await cursor2.fetchall()]
+        return result
+    finally:
+        await db.close()
+
+
+async def add_ticket_message(ticket_id: int, sender: str, message: str, attachments: Optional[str] = None) -> None:
+    """Add a message to a ticket."""
+    now = int(time.time())
+    db = await get_db()
+    try:
+        await db.execute(
+            "INSERT INTO ticket_messages (ticket_id, sender, message, attachments, created_at) VALUES (?, ?, ?, ?, ?)",
+            (ticket_id, sender, message, attachments, now),
+        )
+        await db.execute(
+            "UPDATE tickets SET updated_at = ? WHERE id = ?",
+            (now, ticket_id),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def close_ticket(ticket_id: int) -> None:
+    """Close a ticket."""
+    db = await get_db()
+    try:
+        await db.execute(
+            "UPDATE tickets SET status = 'closed', updated_at = ? WHERE id = ?",
+            (int(time.time()), ticket_id),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def get_all_tickets() -> list[dict]:
+    """Get all tickets (admin)."""
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM tickets ORDER BY updated_at DESC")
+        return [dict(r) for r in await cursor.fetchall()]
     finally:
         await db.close()

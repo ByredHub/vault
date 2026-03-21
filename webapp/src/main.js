@@ -774,66 +774,94 @@ async function renderAdmin() {
   const statsEl = document.getElementById('admin-stats-container');
   const actionsEl = document.getElementById('admin-actions');
   const contentEl = document.getElementById('admin-content');
+  const tabsEl = document.getElementById('admin-tabs');
   const s = await getAdminStats().catch(() => ({}));
 
-  // Stats with two balance sections
+  // Stats — top cards
   statsEl.innerHTML = `
-    <div class="stats-grid">
-      <div class="scard sc-green"><div class="scard-label">Профит</div><div class="scard-value">${fmtPrice(s.total_profit)} ₽</div></div>
-      <div class="scard sc-blue"><div class="scard-label">Оборот</div><div class="scard-value">${fmtPrice(s.total_revenue)} ₽</div></div>
-    </div>
-    <div class="stats-grid">
-      <div class="scard sc-amber"><div class="scard-label">Заказы</div><div class="scard-value">${s.completed_orders}/${s.total_orders}</div></div>
-      <div class="scard"><div class="scard-label">Пользователи</div><div class="scard-value">${s.total_users}</div></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+      <div style="background:linear-gradient(135deg,rgba(34,197,94,.12),rgba(34,197,94,.04));border:1px solid rgba(34,197,94,.15);border-radius:14px;padding:14px">
+        <div style="font-size:.625rem;color:#22c55e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Профит</div>
+        <div style="font-size:1.25rem;font-weight:800;color:#22c55e">${fmtPrice(s.total_profit || 0)} ₽</div>
+      </div>
+      <div style="background:linear-gradient(135deg,rgba(99,102,241,.12),rgba(99,102,241,.04));border:1px solid rgba(99,102,241,.15);border-radius:14px;padding:14px">
+        <div style="font-size:.625rem;color:#818cf8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Оборот</div>
+        <div style="font-size:1.25rem;font-weight:800;color:#818cf8">${fmtPrice(s.total_revenue || 0)} ₽</div>
+      </div>
     </div>
 
-    <div class="admin-balance-section">
-      <div class="admin-balance-title">🏦 Балансы</div>
-      <div class="stats-grid">
-        <div class="scard sc-green">
-          <div class="scard-label">💰 Маркет</div>
-          <div class="scard-value">${fmtPrice(s.lzt_balance)} ₽</div>
-          <div class="scard-sub">Покупки: ${fmtPrice(s.lzt_purchase_balance)} ₽</div>
-        </div>
-        <div class="scard sc-blue">
-          <div class="scard-label">⭐ Stars (юзеры)</div>
-          <div class="scard-value">${fmtPrice(s.total_stars || 0)} ⭐</div>
-          <div class="scard-sub">~${fmtPrice(Math.round((s.total_stars || 0) * 1.6))} ₽</div>
-        </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px">
+      <div style="background:var(--raised);border-radius:10px;padding:10px 8px;text-align:center">
+        <div style="font-size:1rem;font-weight:800;color:var(--t1)">${s.completed_orders || 0}</div>
+        <div style="font-size:.5625rem;color:var(--t4)">Заказы</div>
       </div>
-      <div class="stats-grid">
-        <div class="scard sc-amber"><div class="scard-label">Сегодня</div><div class="scard-value">${s.today_orders} · ${fmtPrice(s.today_profit)}₽</div></div>
-        <div class="scard"><div class="scard-label">Холд</div><div class="scard-value">${fmtPrice(s.lzt_hold || 0)} ₽</div></div>
+      <div style="background:var(--raised);border-radius:10px;padding:10px 8px;text-align:center">
+        <div style="font-size:1rem;font-weight:800;color:var(--t1)">${s.total_users || 0}</div>
+        <div style="font-size:.5625rem;color:var(--t4)">Юзеры</div>
+      </div>
+      <div style="background:var(--raised);border-radius:10px;padding:10px 8px;text-align:center">
+        <div style="font-size:1rem;font-weight:800;color:var(--accent)">${fmtPrice(s.total_stars || 0)}</div>
+        <div style="font-size:.5625rem;color:var(--t4)">Stars ⭐</div>
+      </div>
+      <div style="background:var(--raised);border-radius:10px;padding:10px 8px;text-align:center">
+        <div style="font-size:1rem;font-weight:800;color:var(--t1)">${s.today_orders || 0}</div>
+        <div style="font-size:.5625rem;color:var(--t4)">Сегодня</div>
+      </div>
+    </div>
+
+    <!-- Balances -->
+    <div style="background:var(--raised);border-radius:14px;padding:14px;margin-bottom:12px">
+      <div style="font-size:.6875rem;color:var(--t4);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">💰 Балансы LZT</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="font-size:.75rem;color:var(--t3)">Маркет</span>
+        <span style="font-size:.875rem;font-weight:700;color:var(--t1)">${fmtPrice(s.lzt_balance || 0)} ₽</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="font-size:.75rem;color:var(--t3)">Покупки</span>
+        <span style="font-size:.875rem;font-weight:700;color:var(--t1)">${fmtPrice(s.lzt_purchase_balance || 0)} ₽</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:.75rem;color:var(--t3)">Холд</span>
+        <span style="font-size:.875rem;font-weight:700;color:var(--t1)">${fmtPrice(s.lzt_hold || 0)} ₽</span>
       </div>
     </div>`;
 
-  // Quick actions with working deposit
+  // Quick actions
   actionsEl.innerHTML = `
-    <button class="admin-act act-blue" id="admin-deposit-btn"><i class="bi bi-plus-circle"></i>Пополнить Stars</button>
-    <button class="admin-act act-green" data-action="sync"><i class="bi bi-arrow-repeat"></i>Синхронизация</button>
-    <button class="admin-act act-amber" data-action="export"><i class="bi bi-download"></i>Экспорт</button>
-    <button class="admin-act act-red" data-action="cache"><i class="bi bi-trash3"></i>Очистить кэш</button>
-  `;
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px">
+      <button id="admin-deposit-btn" style="display:flex;align-items:center;justify-content:center;gap:5px;padding:10px;background:linear-gradient(135deg,#6366f1,#818cf8);border:none;border-radius:10px;color:#fff;font-size:.75rem;font-weight:600;cursor:pointer">
+        <i class="bi bi-plus-circle"></i> Пополнить ⭐
+      </button>
+      <button id="admin-cache-btn" style="display:flex;align-items:center;justify-content:center;gap:5px;padding:10px;background:var(--raised);border:1px solid var(--border);border-radius:10px;color:var(--t2);font-size:.75rem;font-weight:600;cursor:pointer">
+        <i class="bi bi-trash3"></i> Очистить кэш
+      </button>
+    </div>`;
 
-  // Deposit button
+  // Deposit
   document.getElementById('admin-deposit-btn')?.addEventListener('click', () => {
     haptic('medium');
     showDepositModal();
   });
 
-  actionsEl.querySelectorAll('[data-action]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      haptic('medium');
-      const labels = { sync: '🔄 Синхронизация запущена', export: '📦 Экспорт данных...', cache: '🗑️ Кэш очищен!' };
-      toast(labels[btn.dataset.action] || 'Действие');
-    });
+  // Clear cache
+  document.getElementById('admin-cache-btn')?.addEventListener('click', () => {
+    haptic('medium');
+    toast('🗑️ Кэш очищен!');
   });
 
-  // Sub-tabs
-  document.querySelectorAll('.atab').forEach(tab => {
+  // Tabs — pill style
+  tabsEl.innerHTML = `
+    <div style="display:flex;background:var(--bg2);border-radius:10px;padding:3px;gap:2px">
+      <button class="adm-pill ${adminTab === 'orders' ? 'adm-pill-active' : ''}" data-atab="orders">Заказы</button>
+      <button class="adm-pill ${adminTab === 'users' ? 'adm-pill-active' : ''}" data-atab="users">Юзеры</button>
+      <button class="adm-pill ${adminTab === 'tickets' ? 'adm-pill-active' : ''}" data-atab="tickets">Тикеты</button>
+      <button class="adm-pill ${adminTab === 'items' ? 'adm-pill-active' : ''}" data-atab="items">Товары</button>
+    </div>`;
+
+  tabsEl.querySelectorAll('.adm-pill').forEach(tab => {
     tab.addEventListener('click', () => {
       adminTab = tab.dataset.atab;
-      document.querySelectorAll('.atab').forEach(t => t.classList.toggle('active', t.dataset.atab === adminTab));
+      tabsEl.querySelectorAll('.adm-pill').forEach(t => t.classList.toggle('adm-pill-active', t.dataset.atab === adminTab));
       haptic();
       renderAdminContent();
     });
@@ -843,18 +871,15 @@ async function renderAdmin() {
 }
 
 function showDepositModal() {
-  const root = document.getElementById('modal-root');
   openModal(`
     <div class="modal-bg" id="modal-bg">
       <div class="modal-panel">
         <div class="modal-grip"></div>
-        <div class="pay-header">
-          <div class="pay-title">⭐ Пополнить Stars</div>
-          <div class="pay-name">Зачислить Stars на баланс пользователя</div>
-        </div>
-        <div class="deposit-form">
-          <input type="number" id="deposit-uid" placeholder="User ID" class="deposit-input" />
-          <input type="number" id="deposit-amount" placeholder="Кол-во Stars" class="deposit-input" min="1" />
+        <div style="padding:20px 16px">
+          <div style="font-size:1rem;font-weight:700;color:var(--t1);margin-bottom:4px">⭐ Пополнить Stars</div>
+          <div style="font-size:.6875rem;color:var(--t4);margin-bottom:16px">Зачислить Stars на баланс пользователя</div>
+          <input type="number" id="deposit-uid" placeholder="User ID" style="width:100%;padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;color:var(--t1);font-size:.8125rem;margin-bottom:8px;box-sizing:border-box" />
+          <input type="number" id="deposit-amount" placeholder="Кол-во Stars" min="1" style="width:100%;padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;color:var(--t1);font-size:.8125rem;margin-bottom:12px;box-sizing:border-box" />
           <button class="btn-cta cta-stars" id="deposit-submit">Зачислить ⭐</button>
         </div>
       </div>
@@ -885,7 +910,7 @@ function showDepositModal() {
       if (!res.ok) throw new Error(data.error || 'Ошибка');
       closeModal();
       toast(`✅ Зачислено ${amount} ⭐ → User ${uid} (баланс: ${data.new_balance}⭐)`);
-      renderAdmin(); // Refresh stats
+      renderAdmin();
     } catch (err) {
       toast('❌ ' + err.message);
       btn.disabled = false;
@@ -898,44 +923,472 @@ function renderAdminContent() {
   const el = document.getElementById('admin-content');
   if (adminTab === 'orders') renderAdminOrders(el);
   else if (adminTab === 'users') renderAdminUsers(el);
+  else if (adminTab === 'tickets') renderAdminTickets(el);
   else if (adminTab === 'items') renderAdminItems(el);
 }
 
 async function renderAdminOrders(el) {
-  const statusMap = { completed: 'badge-done', paid: 'badge-pay', pending: 'badge-wait', error: 'badge-err' };
-  const statusLabel = { completed: 'Готово', paid: 'Оплачен', pending: 'Ожидание', error: 'Ошибка' };
+  el.innerHTML = '<div class="spin"></div>';
   const adminOrders = (await getAdminOrders().catch(() => ({}))).orders || [];
-  if (!adminOrders.length) { el.innerHTML = '<div class="empty"><div class="empty-title">Нет заказов</div></div>'; return; }
+  if (!adminOrders.length) {
+    el.innerHTML = '<div style="text-align:center;padding:32px 0;color:var(--t4);font-size:.8125rem"><i class="bi bi-inbox" style="font-size:2rem;display:block;margin-bottom:8px;opacity:.3"></i>Нет заказов</div>';
+    return;
+  }
 
-  el.innerHTML = adminOrders.map(o => `
-    <div class="arow">
-      <span class="arow-id">#${o.id}</span>
-      <div class="arow-body">
-        <div class="arow-name">${esc(o.item_title || '')}</div>
-        <div class="arow-meta">${fmtPrice(o.sell_price || 0)}₽ · ${timeAgo(o.created_at)}</div>
+  const statusColor = { completed: '#22c55e', paid: '#3b82f6', pending: '#f59e0b', error: '#ef4444' };
+  const statusLabel = { completed: 'Готово', paid: 'Оплачен', pending: 'Ожидание', error: 'Ошибка' };
+
+  el.innerHTML = `<div style="display:flex;flex-direction:column;gap:6px">${adminOrders.map(o => `
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--raised);border-radius:10px;cursor:pointer" onclick="this.querySelector('.ao-expand')?.classList.toggle('ao-show')">
+      <div style="width:6px;height:6px;border-radius:50%;background:${statusColor[o.status] || '#888'};flex-shrink:0"></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:.75rem;font-weight:600;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(o.item_title || 'Без названия')}</div>
+        <div style="font-size:.625rem;color:var(--t4);margin-top:2px">
+          #${o.id} · ⭐${fmtPrice(o.sell_price || 0)} · ${timeAgo(o.created_at)}
+        </div>
       </div>
-      <span class="badge ${statusMap[o.status] || 'badge-wait'}">${statusLabel[o.status] || o.status}</span>
+      <span style="font-size:.5625rem;padding:3px 8px;border-radius:6px;background:${statusColor[o.status] || '#888'}20;color:${statusColor[o.status] || '#888'};font-weight:600">${statusLabel[o.status] || o.status}</span>
     </div>
-  `).join('');
+  `).join('')}</div>`;
 }
 
 async function renderAdminUsers(el) {
+  el.innerHTML = '<div class="spin"></div>';
   const adminUsers = (await getAdminUsers().catch(() => ({}))).users || [];
-  if (!adminUsers.length) { el.innerHTML = '<div class="empty"><div class="empty-title">Нет пользователей</div></div>'; return; }
+  if (!adminUsers.length) {
+    el.innerHTML = '<div style="text-align:center;padding:32px 0;color:var(--t4);font-size:.8125rem"><i class="bi bi-people" style="font-size:2rem;display:block;margin-bottom:8px;opacity:.3"></i>Нет пользователей</div>';
+    return;
+  }
 
-  el.innerHTML = adminUsers.map(u => `
-    <div class="arow">
-      <span class="arow-id">${u.user_id}</span>
-      <div class="arow-body">
-        <div class="arow-name">@${esc(u.username || 'unknown')} ${u.is_blocked ? '<span class="badge badge-err">BAN</span>' : ''}</div>
-        <div class="arow-meta">Заказов: ${u.total_orders || 0} · ${fmtPrice(u.total_spent || 0)}₽</div>
+  el.innerHTML = `<div style="display:flex;flex-direction:column;gap:6px">${adminUsers.map(u => `
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--raised);border-radius:10px">
+      <div style="width:32px;height:32px;border-radius:50%;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:.6875rem;font-weight:700;color:var(--t3);flex-shrink:0">${(u.username || 'U').charAt(0).toUpperCase()}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:.75rem;font-weight:600;color:var(--t1)">
+          @${esc(u.username || 'unknown')} ${u.is_blocked ? '<span style="font-size:.5625rem;padding:2px 6px;border-radius:4px;background:rgba(239,68,68,.15);color:#ef4444;margin-left:4px">BAN</span>' : ''}
+        </div>
+        <div style="font-size:.625rem;color:var(--t4);margin-top:2px">${u.user_id} · ${u.total_orders || 0} заказов · ⭐${fmtPrice(u.stars_balance || 0)}</div>
       </div>
     </div>
-  `).join('');
+  `).join('')}</div>`;
 }
 
 function renderAdminItems(el) {
-  el.innerHTML = '<div class="empty"><div class="empty-title">Товары загружаются из LZT</div><div class="empty-desc">Управление через LZT Market</div></div>';
+  el.innerHTML = '<div style="text-align:center;padding:32px 0;color:var(--t4);font-size:.8125rem"><i class="bi bi-box-seam" style="font-size:2rem;display:block;margin-bottom:8px;opacity:.3"></i>Товары загружаются из LZT<br><span style="font-size:.625rem">Управление через LZT Market</span></div>';
+}
+
+async function renderAdminTickets(el) {
+  el.innerHTML = '<div class="spin"></div>';
+  const res = await fetch('/api/admin/tickets').catch(() => null);
+  const data = res ? await res.json().catch(() => ({})) : {};
+  const tickets = data.tickets || [];
+
+  if (!tickets.length) {
+    el.innerHTML = '<div style="text-align:center;padding:32px 0;color:var(--t4);font-size:.8125rem"><i class="bi bi-chat-square-text" style="font-size:2rem;display:block;margin-bottom:8px;opacity:.3"></i>Нет тикетов</div>';
+    return;
+  }
+
+  const statusColor = { open: '#3b82f6', closed: '#22c55e' };
+  const statusLabel = { open: 'Открыт', closed: 'Закрыт' };
+
+  el.innerHTML = `<div style="display:flex;flex-direction:column;gap:6px">${tickets.map(t => `
+    <div class="admin-ticket-row" data-tid="${t.id}" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--raised);border-radius:10px;cursor:pointer">
+      <div style="width:6px;height:6px;border-radius:50%;background:${statusColor[t.status] || '#888'};flex-shrink:0"></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:.75rem;font-weight:600;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.subject)}</div>
+        <div style="font-size:.625rem;color:var(--t4);margin-top:2px">#${t.id} · User ${t.user_id} · ${timeAgo(t.updated_at)}</div>
+      </div>
+      <span style="font-size:.5625rem;padding:3px 8px;border-radius:6px;background:${statusColor[t.status] || '#888'}20;color:${statusColor[t.status] || '#888'};font-weight:600">${statusLabel[t.status] || t.status}</span>
+    </div>
+  `).join('')}</div>`;
+
+  el.querySelectorAll('.admin-ticket-row').forEach(row => {
+    row.addEventListener('click', () => {
+      showAdminTicketChat(parseInt(row.dataset.tid));
+    });
+  });
+}
+
+async function showAdminTicketChat(ticketId) {
+  openModal(`
+    <div class="modal-bg" id="modal-bg">
+      <div class="modal-panel" style="max-height:85vh;display:flex;flex-direction:column">
+        <div class="modal-grip"></div>
+        <div id="atchat-header" style="padding:12px 16px;border-bottom:1px solid var(--border)"></div>
+        <div id="atchat-messages" style="flex:1;overflow-y:auto;padding:12px 16px"><div class="spin"></div></div>
+        <div id="atchat-input" style="padding:10px 16px;border-top:1px solid var(--border)"></div>
+      </div>
+    </div>
+  `);
+  document.getElementById('modal-bg')?.addEventListener('click', e => {
+    if (e.target === e.currentTarget) { closeModal(); haptic(); }
+  });
+
+  try {
+    const res = await fetch(`/api/tickets/${ticketId}`);
+    const ticket = await res.json();
+    if (!ticket || ticket.error) { toast('Тикет не найден'); closeModal(); return; }
+
+    const statusColor = { open: '#3b82f6', closed: '#22c55e' };
+    const statusLabel = { open: 'Открыт', closed: 'Закрыт' };
+
+    document.getElementById('atchat-header').innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:.8125rem;font-weight:700;color:var(--t1)">${esc(ticket.subject)}</div>
+          <div style="font-size:.625rem;color:var(--t4)">#${ticket.id} · User ${ticket.user_id} · ${timeAgo(ticket.created_at)}</div>
+        </div>
+        <div style="display:flex;gap:4px">
+          ${ticket.status === 'open' ? `<button id="atchat-close" style="padding:4px 10px;background:rgba(239,68,68,.15);border:none;border-radius:6px;color:#ef4444;font-size:.625rem;font-weight:600;cursor:pointer">Закрыть</button>` : ''}
+          <span style="font-size:.5625rem;padding:3px 8px;border-radius:6px;background:${statusColor[ticket.status] || '#888'}20;color:${statusColor[ticket.status] || '#888'};font-weight:600">${statusLabel[ticket.status] || ticket.status}</span>
+        </div>
+      </div>`;
+
+    document.getElementById('atchat-close')?.addEventListener('click', async () => {
+      await fetch(`/api/tickets/${ticketId}/close`, { method: 'POST' });
+      toast('Тикет закрыт');
+      closeModal();
+      renderAdminContent();
+    });
+
+    const msgs = ticket.messages || [];
+    document.getElementById('atchat-messages').innerHTML = msgs.map(m => {
+      const isAdmin = m.sender === 'admin';
+      let attachHtml = '';
+      if (m.attachments) {
+        try {
+          const imgs = JSON.parse(m.attachments);
+          if (Array.isArray(imgs)) {
+            attachHtml = `<div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap">${imgs.map(src => `<img src="${src}" style="width:60px;height:60px;border-radius:6px;object-fit:cover;cursor:pointer" onclick="window.open(this.src)" />`).join('')}</div>`;
+          }
+        } catch {}
+      }
+      return `
+        <div style="display:flex;${isAdmin ? 'justify-content:flex-end;' : ''}margin-bottom:8px">
+          <div style="max-width:80%;padding:10px 12px;border-radius:12px;${isAdmin
+            ? 'background:rgba(99,102,241,.15);border-bottom-right-radius:4px'
+            : 'background:var(--bg2);border-bottom-left-radius:4px'}">
+            <div style="font-size:.5625rem;color:var(--t4);margin-bottom:4px">${isAdmin ? '🛡️ Вы (админ)' : '👤 Пользователь'} · ${timeAgo(m.created_at)}</div>
+            <div style="font-size:.75rem;color:var(--t1);line-height:1.5;word-break:break-word">${esc(m.message)}</div>
+            ${attachHtml}
+          </div>
+        </div>`;
+    }).join('');
+
+    const mc = document.getElementById('atchat-messages');
+    if (mc) mc.scrollTop = mc.scrollHeight;
+
+    if (ticket.status !== 'closed') {
+      document.getElementById('atchat-input').innerHTML = `
+        <div style="display:flex;gap:6px">
+          <input id="atchat-reply" type="text" placeholder="Ответ от поддержки..." style="flex:1;padding:10px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;color:var(--t1);font-size:.8125rem;box-sizing:border-box" />
+          <button id="atchat-send" style="padding:10px 14px;background:linear-gradient(135deg,#6366f1,#818cf8);border:none;border-radius:10px;color:#fff;cursor:pointer"><i class="bi bi-send"></i></button>
+        </div>`;
+      document.getElementById('atchat-send')?.addEventListener('click', async () => {
+        const reply = document.getElementById('atchat-reply')?.value?.trim();
+        if (!reply) return;
+        document.getElementById('atchat-send').disabled = true;
+        await fetch(`/api/tickets/${ticketId}/reply`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sender: 'admin', message: reply }),
+        });
+        closeModal();
+        showAdminTicketChat(ticketId);
+      });
+      document.getElementById('atchat-reply')?.addEventListener('keydown', e => {
+        if (e.key === 'Enter') document.getElementById('atchat-send')?.click();
+      });
+    } else {
+      document.getElementById('atchat-input').innerHTML = '<div style="text-align:center;font-size:.6875rem;color:var(--t4);padding:4px 0">Тикет закрыт</div>';
+    }
+  } catch {
+    toast('Ошибка загрузки');
+    closeModal();
+  }
+}
+
+// ═══════════════════════════════════════
+// Ticket System
+// ═══════════════════════════════════════
+
+async function showTicketsList() {
+  const uid = tg?.initDataUnsafe?.user?.id || '';
+  openModal(`
+    <div class="modal-bg" id="modal-bg">
+      <div class="modal-panel" style="max-height:85vh;display:flex;flex-direction:column">
+        <div class="modal-grip"></div>
+        <div style="padding:16px 16px 0;display:flex;align-items:center;justify-content:space-between">
+          <div style="font-size:1rem;font-weight:700;color:var(--t1)">💬 Поддержка</div>
+          <button id="ticket-create-btn" style="padding:6px 14px;background:linear-gradient(135deg,#6366f1,#818cf8);border:none;border-radius:8px;color:#fff;font-size:.6875rem;font-weight:600;cursor:pointer">+ Новый тикет</button>
+        </div>
+        <div id="tickets-body" style="flex:1;overflow-y:auto;padding:12px 16px">
+          <div class="spin"></div>
+        </div>
+      </div>
+    </div>
+  `);
+  document.getElementById('modal-bg')?.addEventListener('click', e => {
+    if (e.target === e.currentTarget) { closeModal(); haptic(); }
+  });
+  document.getElementById('ticket-create-btn')?.addEventListener('click', () => {
+    closeModal();
+    showCreateTicket();
+  });
+
+  // Load tickets
+  try {
+    const res = await fetch(`/api/tickets?user_id=${uid}`);
+    const data = await res.json();
+    const tickets = data.tickets || [];
+    const body = document.getElementById('tickets-body');
+    if (!body) return;
+
+    if (!tickets.length) {
+      body.innerHTML = `<div style="text-align:center;padding:32px 0;color:var(--t4)">
+        <i class="bi bi-chat-square-text" style="font-size:2rem;display:block;margin-bottom:8px;opacity:.3"></i>
+        <div style="font-size:.8125rem">Нет обращений</div>
+        <div style="font-size:.6875rem;margin-top:4px">Нажмите «+ Новый тикет» чтобы создать</div>
+      </div>`;
+      return;
+    }
+
+    const statusColor = { open: '#3b82f6', closed: '#22c55e', pending: '#f59e0b' };
+    const statusLabel = { open: 'Открыт', closed: 'Закрыт', pending: 'Ожидание' };
+
+    body.innerHTML = tickets.map(t => `
+      <div class="ticket-row" data-tid="${t.id}" style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--bg2);border-radius:10px;margin-bottom:6px;cursor:pointer">
+        <div style="width:6px;height:6px;border-radius:50%;background:${statusColor[t.status] || '#888'};flex-shrink:0"></div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:.8125rem;font-weight:600;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.subject)}</div>
+          <div style="font-size:.625rem;color:var(--t4);margin-top:2px">#${t.id} · ${timeAgo(t.updated_at)}</div>
+        </div>
+        <span style="font-size:.5625rem;padding:3px 8px;border-radius:6px;background:${statusColor[t.status] || '#888'}20;color:${statusColor[t.status] || '#888'};font-weight:600">${statusLabel[t.status] || t.status}</span>
+      </div>
+    `).join('');
+
+    body.querySelectorAll('.ticket-row').forEach(row => {
+      row.addEventListener('click', () => {
+        closeModal();
+        showTicketChat(parseInt(row.dataset.tid));
+      });
+    });
+  } catch {
+    const body = document.getElementById('tickets-body');
+    if (body) body.innerHTML = '<div style="text-align:center;padding:20px;color:var(--t4);font-size:.75rem">Ошибка загрузки</div>';
+  }
+}
+
+function showCreateTicket() {
+  let selectedPhotos = []; // {name, base64}[]
+
+  openModal(`
+    <div class="modal-bg" id="modal-bg">
+      <div class="modal-panel">
+        <div class="modal-grip"></div>
+        <div style="padding:20px 16px">
+          <div style="font-size:1rem;font-weight:700;color:var(--t1);margin-bottom:4px">📝 Новый тикет</div>
+          <div style="font-size:.6875rem;color:var(--t4);margin-bottom:14px">Опишите проблему — ответим в Telegram</div>
+          <input id="ticket-subject" type="text" placeholder="Тема обращения" maxlength="200" style="width:100%;padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;color:var(--t1);font-size:.8125rem;margin-bottom:8px;box-sizing:border-box" />
+          <textarea id="ticket-msg" rows="4" placeholder="Опишите проблему подробнее..." style="width:100%;padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;color:var(--t1);font-size:.8125rem;resize:none;font-family:inherit;box-sizing:border-box"></textarea>
+          <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
+            <label id="ticket-photo-label" style="display:flex;align-items:center;gap:4px;padding:6px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;font-size:.6875rem;color:var(--t3);cursor:pointer">
+              <i class="bi bi-image"></i> Фото (0/3)
+              <input type="file" id="ticket-photos" accept="image/*" multiple style="display:none" />
+            </label>
+            <div id="ticket-photo-previews" style="display:flex;gap:4px"></div>
+          </div>
+          <button class="btn-cta cta-stars" id="ticket-submit" style="margin-top:12px">
+            <i class="bi bi-send"></i> Отправить
+          </button>
+        </div>
+      </div>
+    </div>
+  `);
+
+  document.getElementById('modal-bg')?.addEventListener('click', e => {
+    if (e.target === e.currentTarget) { closeModal(); haptic(); }
+  });
+
+  // Photo upload
+  document.getElementById('ticket-photos')?.addEventListener('change', (e) => {
+    const files = Array.from(e.target.files || []).slice(0, 3 - selectedPhotos.length);
+    files.forEach(file => {
+      if (selectedPhotos.length >= 3) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        selectedPhotos.push({ name: file.name, base64: reader.result });
+        updatePhotoUI();
+      };
+      reader.readAsDataURL(file);
+    });
+  });
+
+  function updatePhotoUI() {
+    const label = document.getElementById('ticket-photo-label');
+    const previews = document.getElementById('ticket-photo-previews');
+    if (label) label.querySelector('i + span') || (label.childNodes[1].textContent = ` Фото (${selectedPhotos.length}/3)`);
+    if (label) label.innerHTML = `<i class="bi bi-image"></i> Фото (${selectedPhotos.length}/3)<input type="file" id="ticket-photos" accept="image/*" multiple style="display:none" />`;
+    if (previews) {
+      previews.innerHTML = selectedPhotos.map((p, i) => `
+        <div style="position:relative;width:36px;height:36px;border-radius:6px;overflow:hidden;border:1px solid var(--border)">
+          <img src="${p.base64}" style="width:100%;height:100%;object-fit:cover" />
+          <div data-rm="${i}" style="position:absolute;top:-2px;right:-2px;width:14px;height:14px;background:#ef4444;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:8px;color:#fff">×</div>
+        </div>
+      `).join('');
+      previews.querySelectorAll('[data-rm]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          selectedPhotos.splice(parseInt(btn.dataset.rm), 1);
+          updatePhotoUI();
+        });
+      });
+    }
+    // Re-attach file input
+    document.getElementById('ticket-photos')?.addEventListener('change', (e) => {
+      const files = Array.from(e.target.files || []).slice(0, 3 - selectedPhotos.length);
+      files.forEach(file => {
+        if (selectedPhotos.length >= 3) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          selectedPhotos.push({ name: file.name, base64: reader.result });
+          updatePhotoUI();
+        };
+        reader.readAsDataURL(file);
+      });
+    });
+  }
+
+  // Submit
+  document.getElementById('ticket-submit')?.addEventListener('click', async () => {
+    const subject = document.getElementById('ticket-subject')?.value?.trim();
+    const msg = document.getElementById('ticket-msg')?.value?.trim();
+    if (!msg) { toast('Напишите сообщение'); return; }
+    const btn = document.getElementById('ticket-submit');
+    btn.disabled = true;
+    btn.textContent = 'Отправка...';
+    try {
+      const uid = tg?.initDataUnsafe?.user?.id || '';
+      const attachments = selectedPhotos.length ? JSON.stringify(selectedPhotos.map(p => p.base64)) : null;
+      const res = await fetch('/api/support', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: uid, subject: subject || 'Обращение', message: msg, attachments }),
+      });
+      if (!res.ok) throw new Error('Ошибка');
+      haptic('success');
+      toast('✅ Тикет создан!');
+      closeModal();
+      setTimeout(() => showTicketsList(), 300);
+    } catch (err) {
+      haptic('error');
+      btn.disabled = false;
+      btn.textContent = 'Отправить';
+      toast('❌ ' + (err.message || 'Ошибка'));
+    }
+  });
+}
+
+async function showTicketChat(ticketId) {
+  openModal(`
+    <div class="modal-bg" id="modal-bg">
+      <div class="modal-panel" style="max-height:85vh;display:flex;flex-direction:column">
+        <div class="modal-grip"></div>
+        <div id="tchat-header" style="padding:12px 16px;border-bottom:1px solid var(--border)"></div>
+        <div id="tchat-messages" style="flex:1;overflow-y:auto;padding:12px 16px"><div class="spin"></div></div>
+        <div id="tchat-input" style="padding:10px 16px;border-top:1px solid var(--border)"></div>
+      </div>
+    </div>
+  `);
+  document.getElementById('modal-bg')?.addEventListener('click', e => {
+    if (e.target === e.currentTarget) { closeModal(); haptic(); }
+  });
+
+  try {
+    const res = await fetch(`/api/tickets/${ticketId}`);
+    const ticket = await res.json();
+    if (!ticket || ticket.error) { toast('Тикет не найден'); closeModal(); return; }
+
+    const statusColor = { open: '#3b82f6', closed: '#22c55e' };
+    const statusLabel = { open: 'Открыт', closed: 'Закрыт' };
+
+    // Header
+    document.getElementById('tchat-header').innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:.8125rem;font-weight:700;color:var(--t1)">${esc(ticket.subject)}</div>
+          <div style="font-size:.625rem;color:var(--t4)">#${ticket.id} · ${timeAgo(ticket.created_at)}</div>
+        </div>
+        <span style="font-size:.5625rem;padding:3px 8px;border-radius:6px;background:${statusColor[ticket.status] || '#888'}20;color:${statusColor[ticket.status] || '#888'};font-weight:600">${statusLabel[ticket.status] || ticket.status}</span>
+      </div>`;
+
+    // Messages — chat bubbles
+    const msgs = ticket.messages || [];
+    document.getElementById('tchat-messages').innerHTML = msgs.map(m => {
+      const isAdmin = m.sender === 'admin';
+      let attachHtml = '';
+      if (m.attachments) {
+        try {
+          const imgs = JSON.parse(m.attachments);
+          if (Array.isArray(imgs)) {
+            attachHtml = `<div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap">${imgs.map(src => `<img src="${src}" style="width:60px;height:60px;border-radius:6px;object-fit:cover;cursor:pointer" onclick="window.open(this.src)" />`).join('')}</div>`;
+          }
+        } catch {}
+      }
+      return `
+        <div style="display:flex;${isAdmin ? '' : 'justify-content:flex-end;'}margin-bottom:8px">
+          <div style="max-width:80%;padding:10px 12px;border-radius:12px;${isAdmin
+            ? 'background:var(--bg2);border-bottom-left-radius:4px'
+            : 'background:rgba(99,102,241,.15);border-bottom-right-radius:4px'}">
+            <div style="font-size:.5625rem;color:var(--t4);margin-bottom:4px">${isAdmin ? '🛡️ Поддержка' : 'Вы'} · ${timeAgo(m.created_at)}</div>
+            <div style="font-size:.75rem;color:var(--t1);line-height:1.5;word-break:break-word">${esc(m.message)}</div>
+            ${attachHtml}
+          </div>
+        </div>`;
+    }).join('');
+
+    // Scroll to bottom
+    const msgContainer = document.getElementById('tchat-messages');
+    if (msgContainer) msgContainer.scrollTop = msgContainer.scrollHeight;
+
+    // Input
+    if (ticket.status === 'closed') {
+      document.getElementById('tchat-input').innerHTML = `
+        <div style="text-align:center;font-size:.6875rem;color:var(--t4);padding:4px 0">Тикет закрыт</div>`;
+    } else {
+      document.getElementById('tchat-input').innerHTML = `
+        <div style="display:flex;gap:6px">
+          <input id="tchat-reply" type="text" placeholder="Сообщение..." style="flex:1;padding:10px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;color:var(--t1);font-size:.8125rem;box-sizing:border-box" />
+          <button id="tchat-send" style="padding:10px 14px;background:linear-gradient(135deg,#6366f1,#818cf8);border:none;border-radius:10px;color:#fff;cursor:pointer">
+            <i class="bi bi-send"></i>
+          </button>
+        </div>`;
+      document.getElementById('tchat-send')?.addEventListener('click', async () => {
+        const reply = document.getElementById('tchat-reply')?.value?.trim();
+        if (!reply) return;
+        const btn = document.getElementById('tchat-send');
+        btn.disabled = true;
+        try {
+          await fetch(`/api/tickets/${ticketId}/reply`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sender: 'user', message: reply }),
+          });
+          closeModal();
+          showTicketChat(ticketId);
+        } catch {
+          btn.disabled = false;
+          toast('Ошибка отправки');
+        }
+      });
+      // Enter to send
+      document.getElementById('tchat-reply')?.addEventListener('keydown', e => {
+        if (e.key === 'Enter') document.getElementById('tchat-send')?.click();
+      });
+    }
+  } catch {
+    toast('Ошибка загрузки тикета');
+    closeModal();
+  }
 }
 
 // ═══════════════════════════════════════
@@ -1078,52 +1531,10 @@ async function renderProfile() {
       .catch(() => toast('ID: ' + userId));
   });
 
-  // Support — in-app form
+  // Support — ticket system
   document.getElementById('prof-support')?.addEventListener('click', () => {
     haptic('light');
-    openModal(`
-      <div class="modal-bg" id="modal-bg">
-        <div class="modal-panel">
-          <div class="modal-grip"></div>
-          <div style="padding:20px 16px">
-            <div style="font-size:1rem;font-weight:700;color:var(--t1);margin-bottom:4px">💬 Поддержка</div>
-            <div style="font-size:.6875rem;color:var(--t4);margin-bottom:16px">Опишите проблему — ответим в Telegram</div>
-            <textarea id="support-msg" rows="4" placeholder="Ваше сообщение..." style="width:100%;padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;color:var(--t1);font-size:.8125rem;resize:none;font-family:inherit;box-sizing:border-box"></textarea>
-            <button class="btn-cta cta-stars" id="support-send" style="margin-top:12px">
-              <i class="bi bi-send"></i> Отправить
-            </button>
-          </div>
-        </div>
-      </div>
-    `);
-    document.getElementById('modal-bg')?.addEventListener('click', e => {
-      if (e.target === e.currentTarget) { closeModal(); haptic(); }
-    });
-    document.getElementById('support-send')?.addEventListener('click', async () => {
-      const msg = document.getElementById('support-msg')?.value?.trim();
-      if (!msg) { toast('Напишите сообщение'); return; }
-      const btn = document.getElementById('support-send');
-      btn.disabled = true;
-      btn.innerHTML = '<div class="spin" style="width:14px;height:14px;margin:0"></div> Отправка...';
-      try {
-        const uid = tg?.initDataUnsafe?.user?.id || '';
-        const res = await fetch('/api/support', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ user_id: uid, message: msg }),
-        });
-        if (!res.ok) throw new Error('Ошибка отправки');
-        haptic('success');
-        btn.innerHTML = '✅ Отправлено!';
-        btn.style.background = '#22c55e';
-        setTimeout(() => closeModal(), 1500);
-      } catch (err) {
-        haptic('error');
-        btn.disabled = false;
-        btn.innerHTML = '<i class="bi bi-send"></i> Отправить';
-        toast('❌ ' + (err.message || 'Ошибка'));
-      }
-    });
+    showTicketsList();
   });
 
   // Rules
