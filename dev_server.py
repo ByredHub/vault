@@ -19,7 +19,7 @@ from bot.services.lzt_api import lzt_api
 from bot.config import settings
 from bot.db import (
     init_db, create_order, update_order_status, get_user_orders,
-    upsert_user, get_all_orders, get_all_users, get_stats,
+    upsert_user, get_all_orders, get_all_users, get_stats, get_user_balance,
 )
 
 logging.basicConfig(
@@ -249,6 +249,13 @@ async def admin_users(request: web.Request) -> web.Response:
     return web.json_response({"users": users})
 
 
+async def user_balance(request: web.Request) -> web.Response:
+    """Get current user's Stars balance."""
+    user_id = DEV_USER["id"]
+    # In production, extract user_id from Telegram init data
+    balance = await get_user_balance(user_id)
+    return web.json_response({"stars_balance": balance})
+
 # ═══════════════════════════════════════
 # CORS + Static
 # ═══════════════════════════════════════
@@ -298,6 +305,7 @@ def create_app() -> web.Application:
     app.router.add_get("/api/admin/stats", admin_stats)
     app.router.add_get("/api/admin/orders", admin_orders)
     app.router.add_get("/api/admin/users", admin_users)
+    app.router.add_get("/api/user/balance", user_balance)
 
     # Serve webapp static files
     if WEBAPP_DIR.exists():

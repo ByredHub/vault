@@ -544,17 +544,26 @@ function init() {
 }
 
 async function loadBalance() {
+  const pill = document.getElementById('balance-pill');
+  const amount = document.getElementById('balance-amount');
+  const icon = document.getElementById('balance-icon');
+  if (!pill || !amount || !icon) return;
+
   try {
-    const res = await fetch('/api/balance');
-    if (!res.ok) return;
-    const data = await res.json();
-    const bal = parseFloat(data.balance) || 0;
-    const pill = document.getElementById('balance-pill');
-    const amount = document.getElementById('balance-amount');
-    if (pill && amount) {
-      amount.textContent = `$${bal.toFixed(2)}`;
-      pill.style.display = '';
+    if (isAdmin) {
+      const res = await fetch('/api/balance');
+      if (!res.ok) return;
+      const data = await res.json();
+      icon.textContent = '💲';
+      amount.textContent = (parseFloat(data.balance) || 0).toFixed(2);
+    } else {
+      const res = await fetch('/api/user/balance');
+      if (!res.ok) return;
+      const data = await res.json();
+      icon.textContent = '⭐';
+      amount.textContent = data.stars_balance || 0;
     }
+    pill.style.display = '';
   } catch { /* ignore */ }
 }
 

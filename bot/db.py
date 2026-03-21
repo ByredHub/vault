@@ -31,7 +31,8 @@ async def init_db() -> None:
                 joined_at INTEGER NOT NULL DEFAULT 0,
                 total_orders INTEGER NOT NULL DEFAULT 0,
                 total_spent REAL NOT NULL DEFAULT 0.0,
-                is_blocked INTEGER NOT NULL DEFAULT 0
+                is_blocked INTEGER NOT NULL DEFAULT 0,
+                stars_balance INTEGER NOT NULL DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS orders (
@@ -64,6 +65,13 @@ async def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(created_at);
         """)
         await db.commit()
+
+        # Migrate: add stars_balance if missing
+        try:
+            await db.execute("ALTER TABLE users ADD COLUMN stars_balance INTEGER NOT NULL DEFAULT 0")
+            await db.commit()
+        except Exception:
+            pass  # column already exists
     finally:
         await db.close()
 
@@ -134,6 +142,50 @@ async def block_user(user_id: int, blocked: bool = True) -> None:
     finally:
         await db.close()
 
+
+async def get_user_balance(user_id: int) -> int:
+    """Get user's Stars balance."""
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT stars_balance FROM users WHERE user_id = ?", (user_id,))
+        row = await cursor.fetchone()
+        return row["stars_balance"] if row else 0
+    finally:
+        await db.close()
+
+
+async def deposit_stars(user_id: int, amount: int) -> int:
+    """Add Stars to user balance. Returns new balance."""
+    db = await get_db()
+    try:
+        await db.execute(
+            "UPDATE users SET stars_balance = stars_balance + ? WHERE user_id = ?",
+            (amount, user_id),
+        )
+        await db.commit()
+        cursor = await db.execute("SELECT stars_balance FROM users WHERE user_id = ?", (user_id,))
+        row = await cursor.fetchone()
+        return row["stars_balance"] if row else 0
+    finally:
+        await db.close()
+
+
+async def withdraw_stars(user_id: int, amount: int) -> bool:
+    """Deduct Stars from user balance. Returns True if sufficient funds."""
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT stars_balance FROM users WHERE user_id = ?", (user_id,))
+        row = await cursor.fetchone()
+        if not row or row["stars_balance"] < amount:
+            return False
+        await db.execute(
+            "UPDATE users SET stars_balance = stars_balance - ? WHERE user_id = ?",
+            (amount, user_id),
+        )
+        await db.commit()
+        return True
+    finally:
+        await db.close()
 
 # ═══════════════════════════════════════
 # Order operations
