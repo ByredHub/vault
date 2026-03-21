@@ -101,22 +101,35 @@ class LZTMarketAPI:
         """Detect and cache the 'balance for purchasing accounts' ID."""
         try:
             data = await self.get_balances()
-            # Look for the purchase balance in the response
-            balances = data.get("balances", data.get("items", []))
-            if isinstance(balances, dict):
-                balances = list(balances.values())
-            for b in balances:
-                if not isinstance(b, dict):
-                    continue
+            # /balance/exchange returns {from: [...], to: [...], system_info: {...}}
+            # Balances can be in 'from', 'to', 'balances', or 'items'
+            all_balances: list[dict] = []
+            for key in ("from", "to", "balances", "items"):
+                raw = data.get(key, [])
+                if isinstance(raw, dict):
+                    all_balances.extend(v for v in raw.values() if isinstance(v, dict))
+                elif isinstance(raw, list):
+                    all_balances.extend(b for b in raw if isinstance(b, dict))
+
+            logger.info("Found %d balance entries to scan", len(all_balances))
+            for b in all_balances:
                 name = (b.get("name", "") + b.get("title", "")).lower()
                 bal_type = b.get("type", "").lower()
-                # Match purchase-related balance by name or type
+                bal_id = b.get("id") or b.get("balance_id")
+                logger.info("  Balance: id=%s, type=%s, name=%s",
+                            bal_id, bal_type, b.get("name", b.get("title", "?")))
+                # Match purchase-related balance
                 if "покупк" in name or "purchase" in name or bal_type == "purchase":
-                    self._purchase_balance_id = b.get("id") or b.get("balance_id")
-                    logger.info("Purchase balance found: id=%s, name=%s",
-                                self._purchase_balance_id, b.get("name", b.get("title", "")))
+                    self._purchase_balance_id = bal_id
+                    logger.info("Purchase balance selected: id=%s", bal_id)
                     return
-            logger.warning("Purchase balance not found in response: %s", list(data.keys()))
+
+            # If no match by name, log everything for debugging
+            if all_balances:
+                logger.warning("No purchase balance matched. Sample keys: %s",
+                               list(all_balances[0].keys()) if all_balances else "empty")
+            else:
+                logger.warning("No balance entries found. Response keys: %s", list(data.keys()))
         except Exception as e:
             logger.warning("Failed to detect purchase balance: %s", e)
 
