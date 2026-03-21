@@ -170,8 +170,6 @@ async function loadItems(silent = false) {
   container.innerHTML = `<div class="items-grid">${items.map(item => {
     const title = item.title || 'Аккаунт';
     const price = item.price || 0;
-    const desc = stripBB(item.description || '');
-    const tags = desc ? desc.split(/[,·|]/).map(t => t.trim()).filter(t => t.length > 2).slice(0, 2) : [];
 
     return `
       <div class="icard" data-item='${JSON.stringify({
@@ -186,7 +184,6 @@ async function loadItems(silent = false) {
         </div>
         <div class="icard-body">
           <div class="icard-title">${esc(title)}</div>
-          ${tags.length ? `<div class="icard-tags">${tags.map((t, i) => `<span class="icard-tag ${i === 0 ? 'tag-green' : 'tag-blue'}">${esc(t)}</span>`).join('')}</div>` : ''}
           <div class="icard-bottom">
             <div class="icard-price">⭐ ${fmtPrice(price)}</div>
             <button class="btn-buy-sm" data-buy="${item.item_id}" data-price="${price}" data-name="${esc(title)}">
