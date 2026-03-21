@@ -293,6 +293,17 @@ async def get_balance(request: web.Request) -> web.Response:
 
 
 # ═══════════════════════════════════════
+# User balance endpoint
+# ═══════════════════════════════════════
+
+async def user_balance(request: web.Request) -> web.Response:
+    """Get current user's Stars balance."""
+    user_id = DEV_USER["id"]  # TODO: extract from Telegram initData
+    balance = await get_user_balance(user_id)
+    return web.json_response({"stars_balance": balance})
+
+
+# ═══════════════════════════════════════
 # Admin endpoints
 # ═══════════════════════════════════════
 
