@@ -946,7 +946,7 @@ async function renderProfile() {
   const container = document.getElementById('profile-container');
   let tgUser = tg?.initDataUnsafe?.user;
 
-  // Fallback: get user info from API when Telegram SDK not available
+  // Fallback: get user info from API
   if (!tgUser) {
     try {
       const res = await fetch('/api/me');
@@ -958,7 +958,9 @@ async function renderProfile() {
   }
 
   const firstName = tgUser?.first_name || 'User';
-  const username = tgUser?.username || 'unknown';
+  const lastName = tgUser?.last_name || '';
+  const fullName = lastName ? `${firstName} ${lastName}` : firstName;
+  const username = tgUser?.username || '';
   const userId = tgUser?.id || '—';
   const photoUrl = tgUser?.photo_url || null;
   const initial = firstName.charAt(0).toUpperCase();
@@ -974,47 +976,142 @@ async function renderProfile() {
     }
   } catch { /* ignore */ }
 
-  const menuItems = [
-    { icon: 'bi-headset', color: 'pmi-blue', label: 'Поддержка', desc: 'Помощь и вопросы' },
-    { icon: 'bi-bell', color: 'pmi-amber', label: 'Уведомления', desc: 'Статус заказов' },
-    { icon: 'bi-shield-check', color: 'pmi-green', label: 'Правила и гарантии', desc: 'Условия использования' },
-  ];
+  // Get orders count
+  let ordersCount = 0;
+  try {
+    const orders = await getMyOrders();
+    if (Array.isArray(orders)) ordersCount = orders.length;
+    else if (orders?.orders) ordersCount = orders.orders.length;
+  } catch { /* ignore */ }
 
   container.innerHTML = `
-    <div class="profile-card">
-      <div class="profile-avatar">
-        ${photoUrl
-          ? `<img class="profile-avatar-img" src="${esc(photoUrl)}" alt="${esc(firstName)}" />`
-          : `<div class="profile-avatar-placeholder">${initial}</div>`
-        }
-      </div>
-      <div class="profile-name">${esc(firstName)}</div>
-      <div class="profile-username">@${esc(username)}</div>
-      <div class="profile-id">ID: ${userId}</div>
-      <div class="profile-status ps-active">⭐ ${starsBalance} Stars</div>
-    </div>
+    <div style="padding:8px 0 24px">
 
-    <div class="profile-menu">
-      ${menuItems.map(m => `
-        <div class="profile-menu-item">
-          <div class="profile-menu-icon ${m.color}"><i class="bi ${m.icon}"></i></div>
-          <div class="profile-menu-body">
-            <div class="profile-menu-label">${m.label}</div>
-            <div class="profile-menu-desc">${m.desc}</div>
+      <!-- User Card -->
+      <div style="background:var(--raised);border-radius:16px;padding:24px 16px 20px;text-align:center;margin-bottom:12px;position:relative;overflow:hidden">
+        <div style="position:absolute;top:0;left:0;right:0;height:80px;background:linear-gradient(135deg,rgba(99,102,241,.15),rgba(168,85,247,.1));pointer-events:none"></div>
+
+        <div style="width:72px;height:72px;border-radius:50%;margin:0 auto 12px;position:relative;background:linear-gradient(135deg,#6366f1,#a855f7);padding:3px">
+          <div style="width:100%;height:100%;border-radius:50%;overflow:hidden;background:var(--bg1);display:flex;align-items:center;justify-content:center">
+            ${photoUrl
+              ? `<img src="${esc(photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover" />`
+              : `<span style="font-size:1.5rem;font-weight:800;color:var(--t2)">${initial}</span>`
+            }
           </div>
-          <i class="bi bi-chevron-right profile-menu-chevron"></i>
         </div>
-      `).join('')}
-    </div>
 
-    <div class="profile-footer">VAULT · v1.0.0</div>
+        <div style="font-size:1.0625rem;font-weight:700;color:var(--t1);margin-bottom:2px">${esc(fullName)}</div>
+        ${username ? `<div style="font-size:.75rem;color:var(--t3);margin-bottom:8px">@${esc(username)}</div>` : ''}
+
+        <!-- Stats Row -->
+        <div style="display:flex;justify-content:center;gap:24px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+          <div style="text-align:center">
+            <div style="font-size:1.125rem;font-weight:800;color:var(--accent)">⭐ ${fmtPrice(starsBalance)}</div>
+            <div style="font-size:.625rem;color:var(--t4);margin-top:2px">Баланс</div>
+          </div>
+          <div style="width:1px;background:var(--border)"></div>
+          <div style="text-align:center">
+            <div style="font-size:1.125rem;font-weight:800;color:var(--t1)">${ordersCount}</div>
+            <div style="font-size:.625rem;color:var(--t4);margin-top:2px">Покупок</div>
+          </div>
+          <div style="width:1px;background:var(--border)"></div>
+          <div style="text-align:center">
+            <div style="font-size:1.125rem;font-weight:800;color:var(--t1)">${userId}</div>
+            <div style="font-size:.625rem;color:var(--t4);margin-top:2px">ID</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Actions -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+        <button id="prof-topup" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:12px;background:linear-gradient(135deg,#6366f1,#818cf8);border:none;border-radius:12px;color:#fff;font-size:.8125rem;font-weight:600;cursor:pointer">
+          <i class="bi bi-plus-circle"></i> Пополнить
+        </button>
+        <button id="prof-orders" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:12px;background:var(--raised);border:1px solid var(--border);border-radius:12px;color:var(--t1);font-size:.8125rem;font-weight:600;cursor:pointer">
+          <i class="bi bi-bag-check"></i> Мои заказы
+        </button>
+      </div>
+
+      <!-- Menu -->
+      <div style="background:var(--raised);border-radius:14px;overflow:hidden">
+        <div class="prof-row" id="prof-copy-id" style="display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;border-bottom:1px solid var(--border)">
+          <div style="width:34px;height:34px;border-radius:10px;background:rgba(99,102,241,.12);display:flex;align-items:center;justify-content:center"><i class="bi bi-copy" style="color:#818cf8;font-size:.875rem"></i></div>
+          <div style="flex:1"><div style="font-size:.8125rem;font-weight:600;color:var(--t1)">Скопировать ID</div><div style="font-size:.6875rem;color:var(--t4)">${userId}</div></div>
+          <i class="bi bi-chevron-right" style="color:var(--t4);font-size:.75rem"></i>
+        </div>
+        <div class="prof-row" id="prof-support" style="display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;border-bottom:1px solid var(--border)">
+          <div style="width:34px;height:34px;border-radius:10px;background:rgba(34,197,94,.12);display:flex;align-items:center;justify-content:center"><i class="bi bi-headset" style="color:#22c55e;font-size:.875rem"></i></div>
+          <div style="flex:1"><div style="font-size:.8125rem;font-weight:600;color:var(--t1)">Поддержка</div><div style="font-size:.6875rem;color:var(--t4)">Помощь и вопросы</div></div>
+          <i class="bi bi-chevron-right" style="color:var(--t4);font-size:.75rem"></i>
+        </div>
+        <div class="prof-row" id="prof-rules" style="display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer">
+          <div style="width:34px;height:34px;border-radius:10px;background:rgba(251,191,36,.12);display:flex;align-items:center;justify-content:center"><i class="bi bi-shield-check" style="color:#fbbf24;font-size:.875rem"></i></div>
+          <div style="flex:1"><div style="font-size:.8125rem;font-weight:600;color:var(--t1)">Правила и гарантии</div><div style="font-size:.6875rem;color:var(--t4)">Условия использования</div></div>
+          <i class="bi bi-chevron-right" style="color:var(--t4);font-size:.75rem"></i>
+        </div>
+      </div>
+
+      <div style="text-align:center;padding:20px 0 0;font-size:.625rem;color:var(--t4);letter-spacing:.5px">VAULT · v1.0.0</div>
+    </div>
   `;
 
-  document.getElementById('copy-ref')?.addEventListener('click', () => {
-    navigator.clipboard?.writeText(p.referral_code).then(() => {
-      toast('📋 Код скопирован!');
-      haptic('medium');
-    }).catch(() => toast('Не удалось скопировать'));
+  // === Event Handlers ===
+
+  // Top Up — open Telegram Stars payment
+  document.getElementById('prof-topup')?.addEventListener('click', () => {
+    haptic('medium');
+    // Navigate to catalog to buy stars
+    toast('⭐ Пополнение баланса — через покупку Stars в боте');
+  });
+
+  // My Orders — switch to orders tab
+  document.getElementById('prof-orders')?.addEventListener('click', () => {
+    haptic('light');
+    navigateTo('orders');
+  });
+
+  // Copy ID
+  document.getElementById('prof-copy-id')?.addEventListener('click', () => {
+    haptic('medium');
+    navigator.clipboard?.writeText(String(userId))
+      .then(() => toast('📋 ID скопирован!'))
+      .catch(() => toast('ID: ' + userId));
+  });
+
+  // Support
+  document.getElementById('prof-support')?.addEventListener('click', () => {
+    haptic('light');
+    tg?.openTelegramLink?.('https://t.me/vault_support') || window.open('https://t.me/vault_support', '_blank');
+  });
+
+  // Rules
+  document.getElementById('prof-rules')?.addEventListener('click', () => {
+    haptic('light');
+    openModal(`
+      <div class="modal-bg" id="modal-bg">
+        <div class="modal-panel">
+          <div class="modal-grip"></div>
+          <div style="padding:20px 16px">
+            <div style="font-size:1rem;font-weight:700;color:var(--t1);margin-bottom:14px">📋 Правила и гарантии</div>
+            <div style="font-size:.75rem;color:var(--t3);line-height:1.7">
+              <p style="margin-bottom:10px"><b style="color:var(--t1)">1. Гарантия</b><br>На все аккаунты действует гарантия замены в течение 24 часов после покупки при условии невалидности данных.</p>
+              <p style="margin-bottom:10px"><b style="color:var(--t1)">2. Возврат</b><br>Возврат Stars возможен, если аккаунт не был получен или оказался невалидным.</p>
+              <p style="margin-bottom:10px"><b style="color:var(--t1)">3. Использование</b><br>Покупатель несёт ответственность за использование аккаунта согласно правилам площадки.</p>
+              <p><b style="color:var(--t1)">4. Поддержка</b><br>По всем вопросам обращайтесь в поддержку через бота.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    `);
+    document.getElementById('modal-bg')?.addEventListener('click', e => {
+      if (e.target === e.currentTarget) { closeModal(); haptic(); }
+    });
+  });
+
+  // Hover effects
+  container.querySelectorAll('.prof-row, #prof-topup, #prof-orders').forEach(el => {
+    el.addEventListener('touchstart', () => el.style.opacity = '.7', { passive: true });
+    el.addEventListener('touchend', () => el.style.opacity = '1', { passive: true });
   });
 }
 
