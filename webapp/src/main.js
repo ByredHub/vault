@@ -267,6 +267,7 @@ function showPayment(itemId, price, title) {
 
   document.getElementById('pay-stars-btn')?.addEventListener('click', async () => {
     const btn = document.getElementById('pay-stars-btn');
+    const panel = root.querySelector('.modal-panel');
     btn.disabled = true;
     btn.innerHTML = '<div class="spin" style="width:16px;height:16px;margin:0"></div> Покупаем...';
     haptic('heavy');
@@ -288,8 +289,7 @@ function showPayment(itemId, price, title) {
       if (result.status === 'completed') {
         haptic('success');
         toast('✅ Покупка успешна!');
-        loadBalance(); // Refresh balance
-        // Open order detail modal
+        loadBalance();
         if (result.order_id) {
           showOrderDetail(result.order_id);
         }
@@ -297,26 +297,27 @@ function showPayment(itemId, price, title) {
         toast('Статус: ' + (result.status || 'unknown'));
       }
     } catch (err) {
-      root.innerHTML = '';
-      const msg = err.message || '';
-      if (msg.includes('проверку')) {
-        toast('⚠️ ' + msg);
-        loadBalance();
-        loadItems();
-      } else if (msg.includes('404') || msg.includes('не найден') || msg.includes('зарезервировать')) {
-        toast('❌ ' + msg);
-        loadItems();
-      } else if (msg.includes('продан') || msg.includes('недоступен') || msg.includes('удалён')) {
-        toast('❌ ' + msg);
-        loadItems();
-      } else if (msg.includes('Stars') || msg.includes('Недостаточно')) {
-        toast('⭐ ' + msg);
-      } else if (msg.includes('429') || msg.includes('частые')) {
-        toast('⏳ Слишком частые запросы. Подождите.');
+      const msg = err.message || 'Неизвестная ошибка';
+      haptic('error');
+      // Show error in the modal panel itself
+      if (panel) {
+        panel.innerHTML = `
+          <div class="modal-grip"></div>
+          <div style="text-align:center;padding:24px 16px">
+            <div style="font-size:2.5rem;margin-bottom:12px">😔</div>
+            <div style="font-size:.9375rem;font-weight:700;color:var(--t1);margin-bottom:8px">Не удалось купить</div>
+            <div style="font-size:.75rem;color:var(--t3);line-height:1.5;margin-bottom:16px">${esc(msg)}</div>
+            <div style="font-size:.625rem;color:var(--t4)">⭐ Stars возвращены на баланс</div>
+          </div>`;
+        // Auto-close after 4 seconds
+        setTimeout(() => { root.innerHTML = ''; }, 4000);
       } else {
         toast('❌ ' + msg);
       }
       loadBalance();
+      if (msg.includes('продан') || msg.includes('не найден') || msg.includes('404')) {
+        loadItems();
+      }
     }
   });
 }

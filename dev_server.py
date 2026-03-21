@@ -226,7 +226,7 @@ async def purchase_item(request: web.Request) -> web.Response:
         resp = web.StreamResponse(
             status=200,
             reason="OK",
-            headers={"Content-Type": "application/x-ndjson", "Cache-Control": "no-cache"},
+            headers={"Content-Type": "application/x-ndjson", "Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
         await resp.prepare(request)
 
