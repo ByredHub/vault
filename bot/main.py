@@ -53,7 +53,7 @@ async def on_startup(bot: Bot) -> None:
     # Check LZT connection
     try:
         me = await lzt_api.get_me()
-        balance = me.get("user", {}).get("balance", 0)
+        balance = float(me.get("user", {}).get("balance", 0))
         logger.info("LZT Market connected. Balance: %.2f₽", balance)
     except Exception as e:
         logger.warning("LZT Market connection check failed: %s", e)
