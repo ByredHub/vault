@@ -36,7 +36,8 @@ WEBAPP_DIR = Path(__file__).parent / "webapp"
 
 # Cache: {key: (data, timestamp)}
 CATALOG_CACHE: dict[str, tuple[dict, float]] = {}
-CACHE_TTL = 120  # 2 minutes
+CACHE_TTL = 45  # seconds — short TTL keeps items fresh
+MAX_CACHE_ENTRIES = 50
 
 
 # ═══════════════════════════════════════
@@ -44,7 +45,7 @@ CACHE_TTL = 120  # 2 minutes
 # ═══════════════════════════════════════
 
 async def get_catalog(request: web.Request) -> web.Response:
-    """Get items from LZT Market with markup. Cached for 2 min."""
+    """Get items from LZT Market with markup. Only active items returned."""
     category = request.query.get("category", "telegram")
     page = int(request.query.get("page", "1"))
     pmin = request.query.get("pmin")
@@ -79,6 +80,9 @@ async def get_catalog(request: web.Request) -> web.Response:
         else:
             items = raw_items
 
+        # Only keep active (available for purchase) items
+        items = [i for i in items if i.get("item_state") == "active"]
+
         # Apply markup
         for item in items:
             original = item.get("price", 0)
@@ -91,7 +95,10 @@ async def get_catalog(request: web.Request) -> web.Response:
             "currentPage": page,
         }
 
-        # Store in cache
+        # Store in cache (evict oldest if over limit)
+        if len(CATALOG_CACHE) >= MAX_CACHE_ENTRIES:
+            oldest_key = min(CATALOG_CACHE, key=lambda k: CATALOG_CACHE[k][1])
+            del CATALOG_CACHE[oldest_key]
         CATALOG_CACHE[cache_key] = (result, time.time())
 
         return web.json_response(result)

@@ -247,9 +247,20 @@ a{text-decoration:none;color:inherit}
 .icard-banner-icon img{width:100%;height:100%;filter:brightness(10)}
 
 /* ═══ SECTION ═══ */
-.section-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px}
+.section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.section-head-right{display:flex;align-items:center;gap:8px}
 .section-title{font-size:1rem;font-weight:800;letter-spacing:-.02em}
 .section-count{font-size:.6875rem;color:var(--t4)}
+
+.refresh-btn{
+  width:28px;height:28px;border-radius:var(--r-sm);
+  background:var(--raised);display:flex;align-items:center;justify-content:center;
+  color:var(--t3);font-size:.8125rem;transition:all .2s;
+  -webkit-tap-highlight-color:transparent;
+}
+.refresh-btn:hover{background:var(--raised-2);color:var(--t2)}
+.refresh-btn:active{transform:scale(.9)}
+.refresh-btn .spinning{animation:spin .6s linear infinite}
 
 /* ═══ ITEMS GRID ═══ */
 .items-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px}

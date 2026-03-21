@@ -37,6 +37,8 @@ function haptic(t = 'light') { tg?.HapticFeedback?.impactOccurred?.(t); }
 // ═══════════════════════════════════════
 
 let currentPage = 'catalog';
+let catalogRefreshInterval = null;
+const CATALOG_REFRESH_MS = 60_000; // auto-refresh every 60s
 
 function navigateTo(page) {
   if (!page) return;
@@ -51,6 +53,15 @@ function navigateTo(page) {
   document.querySelector('.page-container')?.scrollTo(0, 0);
   window.scrollTo(0, 0);
   ({ catalog: renderCatalog, orders: renderOrders, profile: renderProfile, admin: renderAdmin })[page]?.();
+
+  // Auto-refresh catalog only while on catalog page
+  clearInterval(catalogRefreshInterval);
+  catalogRefreshInterval = null;
+  if (page === 'catalog') {
+    catalogRefreshInterval = setInterval(() => {
+      if (currentPage === 'catalog') loadItems(true);
+    }, CATALOG_REFRESH_MS);
+  }
 }
 
 // ═══════════════════════════════════════
@@ -85,29 +96,30 @@ function renderCategories() {
   });
 }
 
-async function loadItems() {
+async function loadItems(silent = false) {
   const container = document.getElementById('items-container');
   const titleEl = document.getElementById('catalog-title');
   const countEl = document.getElementById('catalog-count');
   const catName = CATEGORIES.find(c => c.slug === selectedCategory)?.name || selectedCategory;
   titleEl.textContent = searchQuery ? `Поиск: ${searchQuery}` : catName;
 
-  // Skeletons
-  container.innerHTML = `<div class="items-grid">${Array(6).fill(`
-    <div class="icard" style="pointer-events:none">
-      <div class="icard-banner"><div class="skel" style="width:100%;height:100%"></div></div>
-      <div class="icard-body">
-        <div class="skel" style="height:12px;width:85%;margin-bottom:4px"></div>
-        <div class="skel" style="height:10px;width:55%;margin-bottom:10px"></div>
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div class="skel" style="height:16px;width:50px"></div>
-          <div class="skel" style="height:28px;width:28px;border-radius:7px"></div>
+  // Skeletons only on non-silent load
+  if (!silent) {
+    container.innerHTML = `<div class="items-grid">${Array(6).fill(`
+      <div class="icard" style="pointer-events:none">
+        <div class="icard-banner"><div class="skel" style="width:100%;height:100%"></div></div>
+        <div class="icard-body">
+          <div class="skel" style="height:12px;width:85%;margin-bottom:4px"></div>
+          <div class="skel" style="height:10px;width:55%;margin-bottom:10px"></div>
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div class="skel" style="height:16px;width:50px"></div>
+            <div class="skel" style="height:28px;width:28px;border-radius:7px"></div>
+          </div>
         </div>
       </div>
-    </div>
-  `).join('')}</div>`;
-
-  await new Promise(r => setTimeout(r, 500));
+    `).join('')}</div>`;
+    await new Promise(r => setTimeout(r, 500));
+  }
 
   let items = [];
   try {
@@ -568,6 +580,14 @@ function init() {
   initFilters();
   navigateTo('catalog');
   loadBalance();
+
+  // Manual refresh button
+  document.getElementById('catalog-refresh')?.addEventListener('click', () => {
+    haptic('medium');
+    const icon = document.querySelector('#catalog-refresh i');
+    icon?.classList.add('spinning');
+    loadItems().finally(() => icon?.classList.remove('spinning'));
+  });
 }
 
 async function loadBalance() {
