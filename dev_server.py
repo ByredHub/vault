@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import sys
+import time
 from pathlib import Path
 
 from aiohttp import web
@@ -30,19 +31,33 @@ DEV_USER = {"id": 999999, "username": "dev_tester", "first_name": "Dev"}
 
 WEBAPP_DIR = Path(__file__).parent / "webapp"
 
+# Cache: {key: (data, timestamp)}
+CATALOG_CACHE: dict[str, tuple[dict, float]] = {}
+CACHE_TTL = 120  # 2 minutes
+
 
 # ═══════════════════════════════════════
 # Catalog endpoints (real LZT data)
 # ═══════════════════════════════════════
 
 async def get_catalog(request: web.Request) -> web.Response:
-    """Get items from LZT Market with markup."""
+    """Get items from LZT Market with markup. Cached for 2 min."""
     category = request.query.get("category", "telegram")
     page = int(request.query.get("page", "1"))
     pmin = request.query.get("pmin")
     pmax = request.query.get("pmax")
     title = request.query.get("title")
     order_by = request.query.get("order_by", "price")
+
+    cache_key = f"{category}:{page}:{pmin}:{pmax}:{title}:{order_by}"
+
+    # Check cache
+    if cache_key in CATALOG_CACHE:
+        cached_data, cached_at = CATALOG_CACHE[cache_key]
+        if time.time() - cached_at < CACHE_TTL:
+            return web.json_response(cached_data)
+        else:
+            del CATALOG_CACHE[cache_key]
 
     try:
         params: dict = {"page": page, "order_by": order_by}
@@ -67,11 +82,16 @@ async def get_catalog(request: web.Request) -> web.Response:
             item["original_price"] = original
             item["price"] = settings.calculate_price(original)
 
-        return web.json_response({
+        result = {
             "items": items,
             "totalItems": data.get("totalItems", len(items)),
             "currentPage": page,
-        })
+        }
+
+        # Store in cache
+        CATALOG_CACHE[cache_key] = (result, time.time())
+
+        return web.json_response(result)
     except Exception as e:
         logger.error("Catalog error: %s", e)
         return web.json_response({"error": str(e)}, status=500)
