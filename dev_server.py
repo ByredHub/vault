@@ -286,8 +286,24 @@ async def purchase_item(request: web.Request) -> web.Response:
 
 
 async def get_orders(request: web.Request) -> web.Response:
-    """Get dev user orders."""
-    orders = await get_user_orders(DEV_USER["id"])
+    """Get user orders."""
+    user_id = request.query.get("user_id")
+    if not user_id:
+        init_data = request.headers.get("X-Telegram-Init-Data", "")
+        if init_data:
+            from urllib.parse import parse_qs, unquote
+            parsed = parse_qs(init_data)
+            user_raw = parsed.get("user", [None])[0]
+            if user_raw:
+                try:
+                    tg_user = json.loads(unquote(user_raw))
+                    user_id = tg_user.get("id")
+                except Exception:
+                    pass
+        if not user_id:
+            admin_list = [int(x.strip()) for x in settings.admin_ids.split(",") if x.strip()]
+            user_id = admin_list[0] if admin_list else DEV_USER["id"]
+    orders = await get_user_orders(int(user_id))
     return web.json_response({"orders": orders})
 
 

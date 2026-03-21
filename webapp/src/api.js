@@ -71,7 +71,8 @@ export function checkOrder(orderId) {
 }
 
 export function getMyOrders() {
-  return apiRequest('/api/orders/my');
+  const uid = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || '';
+  return apiRequest(`/api/orders/my${uid ? `?user_id=${uid}` : ''}`);
 }
 
 // ═══════════════════════════════════════
