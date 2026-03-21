@@ -43,7 +43,11 @@ function navigateTo(page) {
   currentPage = page;
   haptic();
   document.querySelectorAll('.bnav-tab').forEach(t => t.classList.toggle('active', t.dataset.page === page));
-  document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === `page-${page}`));
+  document.querySelectorAll('.page').forEach(p => {
+    const isActive = p.id === `page-${page}`;
+    p.style.display = isActive ? 'block' : 'none';
+    p.classList.toggle('active', isActive);
+  });
   document.querySelector('.page-container')?.scrollTo(0, 0);
   window.scrollTo(0, 0);
   ({ catalog: renderCatalog, orders: renderOrders, profile: renderProfile, admin: renderAdmin })[page]?.();
