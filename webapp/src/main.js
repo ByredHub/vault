@@ -295,6 +295,8 @@ function showPayment(itemId, price, title) {
       } else if (msg.includes('продан') || msg.includes('недоступен') || msg.includes('удалён') || msg.includes('Обновите каталог')) {
         toast('❌ ' + msg);
         loadItems();
+      } else if (msg.includes('Stars') || msg.includes('Недостаточно')) {
+        toast('⭐ ' + msg);
       } else if (msg.includes('429')) {
         toast('⏳ Слишком частые запросы. Подождите.');
       } else {
@@ -373,8 +375,12 @@ async function renderAdmin() {
       <div class="scard"><div class="scard-label">Пользователи</div><div class="scard-value">${s.total_users}</div></div>
     </div>
     <div class="stats-grid">
-      <div class="scard sc-green"><div class="scard-label">Баланс LZT</div><div class="scard-value">$${fmtPrice(s.lzt_balance)}</div></div>
+      <div class="scard sc-green"><div class="scard-label">Баланс LZT</div><div class="scard-value">${fmtPrice(s.lzt_balance)} ₽</div></div>
+      <div class="scard sc-blue"><div class="scard-label">Баланс покупок</div><div class="scard-value">${fmtPrice(s.lzt_purchase_balance)} ₽</div></div>
+    </div>
+    <div class="stats-grid">
       <div class="scard sc-amber"><div class="scard-label">Сегодня</div><div class="scard-value">${s.today_orders} · ${fmtPrice(s.today_profit)}₽</div></div>
+      <div class="scard"><div class="scard-label">Холд</div><div class="scard-value">${fmtPrice(s.lzt_hold || 0)} ₽</div></div>
     </div>`;
 
   // Quick actions
@@ -601,8 +607,9 @@ async function loadBalance() {
       const res = await fetch('/api/balance');
       if (!res.ok) return;
       const data = await res.json();
-      icon.textContent = '💲';
-      amount.textContent = (parseFloat(data.balance) || 0).toFixed(2);
+      const total = (parseFloat(data.balance) || 0) + (parseFloat(data.purchase_balance) || 0);
+      icon.textContent = '💰';
+      amount.textContent = Math.round(total) + '₽';
     } else {
       const res = await fetch('/api/user/balance');
       if (!res.ok) return;

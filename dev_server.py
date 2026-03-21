@@ -91,7 +91,7 @@ async def get_catalog(request: web.Request) -> web.Response:
 
         result = {
             "items": items,
-            "totalItems": data.get("totalItems", len(items)),
+            "totalItems": len(items),
             "currentPage": page,
         }
 
@@ -153,7 +153,6 @@ async def purchase_item(request: web.Request) -> web.Response:
         state = item.get("item_state", "unknown")
         logger.info("Item #%d state: %s, price: %s", item_id, state, original_price)
         if state != "active":
-            # Invalidate cached catalog so user sees fresh data
             CATALOG_CACHE.clear()
             state_labels = {
                 "closed": "уже продан",
@@ -166,12 +165,32 @@ async def purchase_item(request: web.Request) -> web.Response:
                 status=400,
             )
 
-        # 2. Upsert dev user
-        await upsert_user(DEV_USER["id"], DEV_USER["username"], DEV_USER["first_name"])
+        # Check user has enough Stars balance
+        user_id = DEV_USER["id"]  # TODO: extract from Telegram initData
+        user_balance = await get_user_balance(user_id)
+        stars_needed = max(1, int(sell_price / 1.6))  # Same formula as frontend
+        if user_balance < stars_needed:
+            return web.json_response(
+                {"error": f"Недостаточно Stars. Нужно ⭐{stars_needed}, у вас ⭐{user_balance}"},
+                status=400,
+            )
 
-        # 3. Create order in DB
+        # 2. Upsert user
+        await upsert_user(user_id, DEV_USER["username"], DEV_USER["first_name"])
+
+        # 3. Deduct Stars from user balance
+        from bot.db import withdraw_stars
+        stars_withdrawn = await withdraw_stars(user_id, stars_needed)
+        if not stars_withdrawn:
+            return web.json_response(
+                {"error": "Не удалось списать Stars. Попробуйте ещё раз."},
+                status=400,
+            )
+        logger.info("Deducted %d Stars from user %d", stars_needed, user_id)
+
+        # 4. Create order in DB
         order_id = await create_order(
-            user_id=DEV_USER["id"],
+            user_id=user_id,
             lzt_item_id=item_id,
             item_title=title,
             item_category=str(item.get("category_id", "")),
@@ -181,12 +200,16 @@ async def purchase_item(request: web.Request) -> web.Response:
         )
         logger.info("Order #%d created for item #%d", order_id, item_id)
 
-        # 4. Purchase on LZT via fast-buy (single step, works for all categories)
+        # 5. Purchase on LZT via fast-buy (single step, works for all categories)
         logger.info("Starting fast-buy for item #%d (original price: %.2f)...", item_id, original_price)
         try:
             result = await lzt_api.fast_buy(item_id, original_price)
         except Exception as buy_err:
             logger.error("Fast-buy failed for item #%d: %s", item_id, buy_err)
+            # Refund Stars on failed purchase
+            from bot.db import deposit_stars
+            await deposit_stars(user_id, stars_needed)
+            logger.info("Refunded %d Stars to user %d", stars_needed, user_id)
             await update_order_status(order_id, "error", error_message=str(buy_err))
             CATALOG_CACHE.clear()
             return web.json_response({"error": f"Ошибка покупки: {buy_err}"}, status=400)
@@ -243,13 +266,27 @@ async def get_orders(request: web.Request) -> web.Response:
 
 
 async def get_balance(request: web.Request) -> web.Response:
-    """Get LZT balance."""
+    """Get LZT balance (regular + purchase)."""
     try:
         me = await lzt_api.get_me()
-        return web.json_response({
-            "balance": me.get("user", {}).get("balance", 0),
-            "hold": me.get("user", {}).get("hold", 0),
-        })
+        user_data = me.get("user", {})
+        result = {
+            "balance": user_data.get("balance", 0),
+            "hold": user_data.get("hold", 0),
+            "purchase_balance": 0,
+        }
+        # Get purchase balance from exchange data
+        try:
+            exchange = await lzt_api.get_balances()
+            for key in ("from", "to"):
+                for b in (exchange.get(key) or []):
+                    if isinstance(b, dict):
+                        name = (b.get("name", "") + b.get("title", "")).lower()
+                        if "покупк" in name or b.get("type") == "account":
+                            result["purchase_balance"] = b.get("amount", b.get("balance", 0))
+        except Exception:
+            pass
+        return web.json_response(result)
     except Exception as e:
         return web.json_response({"error": str(e)}, status=500)
 
@@ -262,12 +299,26 @@ async def admin_stats(request: web.Request) -> web.Response:
     """Get admin dashboard stats."""
     try:
         stats = await get_stats()
-        # Add LZT balance
+        # Add LZT balances (regular + purchase)
         try:
             me = await lzt_api.get_me()
-            stats["lzt_balance"] = me.get("user", {}).get("balance", 0)
+            user_data = me.get("user", {})
+            stats["lzt_balance"] = user_data.get("balance", 0)
+            stats["lzt_hold"] = user_data.get("hold", 0)
+            stats["lzt_purchase_balance"] = 0
+            try:
+                exchange = await lzt_api.get_balances()
+                for key in ("from", "to"):
+                    for b in (exchange.get(key) or []):
+                        if isinstance(b, dict):
+                            name = (b.get("name", "") + b.get("title", "")).lower()
+                            if "покупк" in name or b.get("type") == "account":
+                                stats["lzt_purchase_balance"] = b.get("amount", b.get("balance", 0))
+            except Exception:
+                pass
         except Exception:
             stats["lzt_balance"] = 0
+            stats["lzt_purchase_balance"] = 0
         return web.json_response(stats)
     except Exception as e:
         return web.json_response({"error": str(e)}, status=500)
@@ -363,7 +414,7 @@ def create_app() -> web.Application:
 
     # Serve webapp static files
     if WEBAPP_DIR.exists():
-        app.router.add_static("/", WEBAPP_DIR, show_index=True)
+        app.router.add_static("/", WEBAPP_DIR, show_index=False)
         logger.info("Serving webapp from %s", WEBAPP_DIR)
 
     return app
