@@ -169,18 +169,27 @@ class LZTMarketAPI:
 
     async def reserve_item(self, item_id: int, price: float) -> dict[str, Any]:
         """Reserve an item for 300 seconds (step 1 of purchase)."""
+        data: dict[str, Any] = {"price": price}
+        if self._purchase_balance_id is not None:
+            data["balance_id"] = self._purchase_balance_id
         return await self._request(
             "POST", f"/{item_id}/reserve",
-            data={"price": price},
+            data=data,
         )
 
     async def check_item(self, item_id: int) -> dict[str, Any]:
         """Check if item is valid — LZT verifies the account (step 2)."""
-        return await self._request("POST", f"/{item_id}/check-account")
+        data: dict[str, Any] = {}
+        if self._purchase_balance_id is not None:
+            data["balance_id"] = self._purchase_balance_id
+        return await self._request("POST", f"/{item_id}/check-account", data=data or None)
 
     async def confirm_buy(self, item_id: int) -> dict[str, Any]:
         """Confirm purchase after reserve + check (step 3)."""
-        return await self._request("POST", f"/{item_id}/confirm-buy")
+        data: dict[str, Any] = {}
+        if self._purchase_balance_id is not None:
+            data["balance_id"] = self._purchase_balance_id
+        return await self._request("POST", f"/{item_id}/confirm-buy", data=data or None)
 
     async def cancel_reserve(self, item_id: int) -> dict[str, Any]:
         """Cancel a reservation."""
