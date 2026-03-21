@@ -154,17 +154,17 @@ async function loadItems(silent = false) {
   const cat = CATEGORIES.find(c => c.slug === selectedCategory);
 
   // Strip BBCode tags from description
-  function stripBB(str) {
+  function stripBB(str, maxLen = 80) {
     if (!str) return '';
     return str
       .replace(/\[URL[^\]]*\][^\[]*\[\/URL\]/gi, '')
       .replace(/\[IMG[^\]]*\][^\[]*\[\/IMG\]/gi, '')
       .replace(/\[tooltip=[^\]]*\]([^\[]*)\[\/tooltip\]/gi, '$1')
       .replace(/\[QUOTE\][\s\S]*?\[\/QUOTE\]/gi, '')
-      .replace(/\[\/?[A-Z][^\]]*\]/gi, '')
+      .replace(/\[\/?(B|I|U|S|SIZE|COLOR|FONT|CENTER|LEFT|RIGHT|LIST|INDENT|HEADING|PLAIN|CODE|ICODE|HR)[^\]]*\]/gi, '')
       .replace(/\s{2,}/g, ' ')
       .trim()
-      .slice(0, 80);
+      .slice(0, maxLen);
   }
 
   container.innerHTML = `<div class="items-grid">${items.map(item => {
@@ -174,7 +174,12 @@ async function loadItems(silent = false) {
     const tags = desc ? desc.split(/[,·|]/).map(t => t.trim()).filter(t => t.length > 2).slice(0, 2) : [];
 
     return `
-      <div class="icard">
+      <div class="icard" data-item='${JSON.stringify({
+        id: item.item_id, title, price, desc: stripBB(item.description || '', 300),
+        country: item.telegram_country || '', phone: item.telegram_phone || '',
+        dc: item.telegram_dc_id || '', premium: item.telegram_premium || 0,
+        login: item.login || '',
+      }).replace(/'/g, '&#39;')}' style="cursor:pointer">
         <div class="icard-banner" style="background:${cat?.gradient || 'var(--raised-2)'}">
           <div class="icard-banner-icon">${getCategoryIcon(selectedCategory, 20)}</div>
           <span class="icard-banner-label">${esc(cat?.name || '')}</span>
@@ -204,12 +209,87 @@ async function loadItems(silent = false) {
     }, i * 40);
   });
 
+  // Card click → detail modal
+  container.querySelectorAll('.icard[data-item]').forEach(card => {
+    card.addEventListener('click', e => {
+      if (e.target.closest('[data-buy]')) return; // Don't trigger if buy button clicked
+      haptic('light');
+      try {
+        const item = JSON.parse(card.dataset.item);
+        showItemDetail(item);
+      } catch { /* ignore */ }
+    });
+  });
+
   container.querySelectorAll('[data-buy]').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation();
       haptic('medium');
       showPayment(btn.dataset.buy, btn.dataset.price, btn.dataset.name);
     });
+  });
+}
+
+function showItemDetail(item) {
+  const root = document.getElementById('modal-root');
+  const cat = CATEGORIES.find(c => c.slug === selectedCategory);
+
+  // Build info rows
+  const rows = [];
+  if (item.country) rows.push(['🌍 Страна', item.country]);
+  if (item.phone) rows.push(['📱 Телефон', item.phone]);
+  if (item.dc) rows.push(['🏠 Дата-центр', `DC${item.dc}`]);
+  if (item.premium) rows.push(['⭐ Premium', 'Да']);
+  if (item.login) rows.push(['👤 Логин', item.login]);
+
+  root.innerHTML = `
+    <div class="modal-bg" id="modal-bg">
+      <div class="modal-panel">
+        <div class="modal-grip"></div>
+
+        <div class="pay-header" style="background:${cat?.gradient || 'var(--raised-2)'}">
+          <div style="display:flex;align-items:center;gap:8px">
+            ${getCategoryIcon(selectedCategory, 22)}
+            <div class="pay-title" style="font-size:.8125rem">${esc(cat?.name || 'Аккаунт')}</div>
+          </div>
+          <div class="pay-name" style="margin-top:4px;font-size:.75rem;opacity:.7">#${item.id}</div>
+        </div>
+
+        <div style="padding:16px">
+          <div style="font-size:.9375rem;font-weight:700;color:var(--t1);margin-bottom:12px;line-height:1.4">${esc(item.title)}</div>
+
+          ${item.desc ? `<div style="font-size:.75rem;color:var(--t3);line-height:1.5;margin-bottom:14px;padding:10px;background:var(--bg2);border-radius:10px">${esc(item.desc)}</div>` : ''}
+
+          ${rows.length ? `
+            <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+              ${rows.map(([label, value]) => `
+                <div class="pay-detail">
+                  <span class="pay-detail-label">${label}</span>
+                  <span class="pay-detail-value">${esc(value)}</span>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+
+          <div class="pay-amount" style="margin-bottom:16px">
+            <div class="pay-amount-value">⭐ ${fmtPrice(item.price)}</div>
+          </div>
+
+          <button class="btn-cta cta-stars" id="detail-buy-btn">
+            <i class="bi bi-bag-plus"></i> Купить за ⭐ ${fmtPrice(item.price)}
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('modal-bg')?.addEventListener('click', e => {
+    if (e.target === e.currentTarget) { root.innerHTML = ''; haptic(); }
+  });
+
+  document.getElementById('detail-buy-btn')?.addEventListener('click', () => {
+    root.innerHTML = '';
+    showPayment(item.id, item.price, item.title);
   });
 }
 
