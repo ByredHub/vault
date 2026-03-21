@@ -256,6 +256,17 @@ async def user_balance(request: web.Request) -> web.Response:
     balance = await get_user_balance(user_id)
     return web.json_response({"stars_balance": balance})
 
+
+async def get_me(request: web.Request) -> web.Response:
+    """Get current user info + admin check."""
+    # In production, extract from Telegram initData
+    user_id = DEV_USER["id"]
+    admin_ids = [int(x.strip()) for x in settings.admin_ids.split(",") if x.strip()]
+    return web.json_response({
+        "user_id": user_id,
+        "is_admin": user_id in admin_ids,
+    })
+
 # ═══════════════════════════════════════
 # CORS + Static
 # ═══════════════════════════════════════
@@ -306,6 +317,7 @@ def create_app() -> web.Application:
     app.router.add_get("/api/admin/orders", admin_orders)
     app.router.add_get("/api/admin/users", admin_users)
     app.router.add_get("/api/user/balance", user_balance)
+    app.router.add_get("/api/me", get_me)
 
     # Serve webapp static files
     if WEBAPP_DIR.exists():

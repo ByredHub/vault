@@ -15,11 +15,19 @@ import {
 // ═══════════════════════════════════════
 
 const tg = window.Telegram?.WebApp;
-let isAdmin = true;
+let isAdmin = false;
 
-function initTelegram() {
+async function initTelegram() {
   if (tg) { tg.ready(); tg.expand(); tg.enableClosingConfirmation(); }
-  document.getElementById('admin-tab').style.display = '';
+  // Check admin status from server
+  try {
+    const res = await fetch('/api/me');
+    if (res.ok) {
+      const data = await res.json();
+      isAdmin = data.is_admin || false;
+    }
+  } catch { /* ignore */ }
+  document.getElementById('admin-tab').style.display = isAdmin ? '' : 'none';
 }
 
 function haptic(t = 'light') { tg?.HapticFeedback?.impactOccurred?.(t); }
@@ -530,8 +538,8 @@ function initFilters() {
   });
 }
 
-function init() {
-  initTelegram();
+async function init() {
+  await initTelegram();
   document.querySelectorAll('.bnav-tab').forEach(t => t.addEventListener('click', () => navigateTo(t.dataset.page)));
   let timer;
   document.getElementById('catalog-search')?.addEventListener('input', e => {
