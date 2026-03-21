@@ -114,7 +114,7 @@ export function blockUser(userId, blocked) {
   });
 }
 
-export async function purchaseItem(itemId) {
+export async function purchaseItem(itemId, onProgress) {
   // Get user_id from Telegram or API
   let userId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
   if (!userId) {
@@ -123,8 +123,48 @@ export async function purchaseItem(itemId) {
       userId = me.user_id;
     } catch { /* ignore */ }
   }
-  return apiRequest('/api/purchase', {
+
+  const initData = window.Telegram?.WebApp?.initData || '';
+  const res = await fetch('/api/purchase', {
     method: 'POST',
-    body: { item_id: itemId, user_id: userId },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Telegram-Init-Data': initData,
+    },
+    body: JSON.stringify({ item_id: itemId, user_id: userId }),
   });
+
+  // Read NDJSON stream
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let finalResult = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const data = JSON.parse(line);
+        if (data.step === 'result') {
+          finalResult = data;
+        } else if (data.step === 'error') {
+          throw new Error(data.message);
+        } else if (onProgress) {
+          onProgress(data);
+        }
+      } catch (e) {
+        if (e.message && !e.message.includes('JSON')) throw e;
+      }
+    }
+  }
+
+  if (!finalResult) throw new Error('Не получен результат покупки');
+  return finalResult;
 }

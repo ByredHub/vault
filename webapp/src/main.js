@@ -271,8 +271,19 @@ function showPayment(itemId, price, title) {
     btn.innerHTML = '<div class="spin" style="width:16px;height:16px;margin:0"></div> Покупаем...';
     haptic('heavy');
 
+    const stepIcons = {
+      reserve: '🔒',
+      check: '🔍',
+      confirm: '💰',
+      done: '✨',
+    };
+
     try {
-      const result = await purchaseItem(itemId);
+      const result = await purchaseItem(itemId, (progress) => {
+        const icon = stepIcons[progress.step] || '⏳';
+        btn.innerHTML = `<div class="spin" style="width:14px;height:14px;margin:0"></div> ${icon} ${progress.message}`;
+      });
+
       root.innerHTML = '';
       if (result.status === 'completed') {
         haptic('success');
@@ -288,19 +299,24 @@ function showPayment(itemId, price, title) {
     } catch (err) {
       root.innerHTML = '';
       const msg = err.message || '';
-      if (msg.includes('404') || msg.includes('не найден')) {
-        toast('❌ Товар не найден на маркете!');
+      if (msg.includes('проверку')) {
+        toast('⚠️ ' + msg);
+        loadBalance();
         loadItems();
-      } else if (msg.includes('продан') || msg.includes('недоступен') || msg.includes('удалён') || msg.includes('Обновите каталог')) {
+      } else if (msg.includes('404') || msg.includes('не найден') || msg.includes('зарезервировать')) {
+        toast('❌ ' + msg);
+        loadItems();
+      } else if (msg.includes('продан') || msg.includes('недоступен') || msg.includes('удалён')) {
         toast('❌ ' + msg);
         loadItems();
       } else if (msg.includes('Stars') || msg.includes('Недостаточно')) {
         toast('⭐ ' + msg);
-      } else if (msg.includes('429')) {
+      } else if (msg.includes('429') || msg.includes('частые')) {
         toast('⏳ Слишком частые запросы. Подождите.');
       } else {
-        toast('❌ Ошибка: ' + msg);
+        toast('❌ ' + msg);
       }
+      loadBalance();
     }
   });
 }
