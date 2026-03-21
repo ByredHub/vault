@@ -259,8 +259,11 @@ async def user_balance(request: web.Request) -> web.Response:
 
 async def get_me(request: web.Request) -> web.Response:
     """Get current user info + admin check."""
-    # In production, extract from Telegram initData
-    user_id = DEV_USER["id"]
+    raw = request.query.get("user_id", "")
+    try:
+        user_id = int(raw) if raw else DEV_USER["id"]
+    except ValueError:
+        user_id = DEV_USER["id"]
     admin_ids = [int(x.strip()) for x in settings.admin_ids.split(",") if x.strip()]
     return web.json_response({
         "user_id": user_id,

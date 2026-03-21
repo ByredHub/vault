@@ -21,7 +21,8 @@ async function initTelegram() {
   if (tg) { tg.ready(); tg.expand(); tg.enableClosingConfirmation(); }
   // Check admin status from server
   try {
-    const res = await fetch('/api/me');
+    const uid = tg?.initDataUnsafe?.user?.id || '';
+    const res = await fetch(`/api/me?user_id=${uid}`);
     if (res.ok) {
       const data = await res.json();
       isAdmin = data.is_admin || false;
