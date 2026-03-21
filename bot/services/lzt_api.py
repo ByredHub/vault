@@ -59,6 +59,7 @@ class LZTMarketAPI:
 
             session = await self._get_session()
             url = f"{MARKET_BASE}{endpoint}"
+            logger.info("API >> %s %s data=%s params=%s", method, url, data, params)
 
             for attempt in range(MAX_RETRIES + 1):
                 try:
