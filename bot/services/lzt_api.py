@@ -25,6 +25,7 @@ class LZTMarketAPI:
         self._session: Optional[aiohttp.ClientSession] = None
         self._last_request: float = 0.0
         self._lock = asyncio.Lock()
+        self._purchase_balance_id: Optional[int] = None
 
     async def _get_session(self) -> aiohttp.ClientSession:
         """Get or create aiohttp session."""
@@ -92,6 +93,33 @@ class LZTMarketAPI:
         """Get current user/balance info."""
         return await self._request("GET", "/me")
 
+    async def get_balances(self) -> dict[str, Any]:
+        """Get available balance types (regular, purchase, etc)."""
+        return await self._request("GET", "/balance/exchange")
+
+    async def init_purchase_balance(self) -> None:
+        """Detect and cache the 'balance for purchasing accounts' ID."""
+        try:
+            data = await self.get_balances()
+            # Look for the purchase balance in the response
+            balances = data.get("balances", data.get("items", []))
+            if isinstance(balances, dict):
+                balances = list(balances.values())
+            for b in balances:
+                if not isinstance(b, dict):
+                    continue
+                name = (b.get("name", "") + b.get("title", "")).lower()
+                bal_type = b.get("type", "").lower()
+                # Match purchase-related balance by name or type
+                if "покупк" in name or "purchase" in name or bal_type == "purchase":
+                    self._purchase_balance_id = b.get("id") or b.get("balance_id")
+                    logger.info("Purchase balance found: id=%s, name=%s",
+                                self._purchase_balance_id, b.get("name", b.get("title", "")))
+                    return
+            logger.warning("Purchase balance not found in response: %s", list(data.keys()))
+        except Exception as e:
+            logger.warning("Failed to detect purchase balance: %s", e)
+
     async def get_categories(self) -> dict[str, Any]:
         """Get all market categories."""
         return await self._request("GET", "/category")
@@ -146,10 +174,12 @@ class LZTMarketAPI:
         return await self._request("POST", f"/{item_id}/cancel-reserve")
 
     async def fast_buy(self, item_id: int, price: float, skip_validation: bool = False) -> dict[str, Any]:
-        """Fast buy — single request purchase."""
+        """Fast buy — single request purchase. Uses purchase balance if available."""
         data: dict[str, Any] = {"price": price}
         if skip_validation:
             data["buy_without_validation"] = 1
+        if self._purchase_balance_id is not None:
+            data["balance_id"] = self._purchase_balance_id
         return await self._request("POST", f"/{item_id}/fast-buy", data=data)
 
     async def get_purchased_item_data(self, item_id: int) -> dict[str, Any]:

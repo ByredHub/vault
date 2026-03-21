@@ -332,9 +332,11 @@ async def on_startup(app: web.Application) -> None:
     try:
         me = await lzt_api.get_me()
         balance = me.get("user", {}).get("balance", 0)
-        logger.info("LZT Market connected. Balance: $%s", balance)
+        logger.info("LZT Market connected. Balance: %s₽", balance)
     except Exception as e:
         logger.warning("LZT check failed: %s", e)
+    # Detect purchase balance for fast-buy
+    await lzt_api.init_purchase_balance()
     logger.info("Dev server ready! Open http://localhost:8080")
 
 
