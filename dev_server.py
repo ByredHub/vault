@@ -595,6 +595,51 @@ async def get_me(request: web.Request) -> web.Response:
     })
 
 # ═══════════════════════════════════════
+# Support
+# ═══════════════════════════════════════
+
+async def support_message(request: web.Request) -> web.Response:
+    """Receive support message from webapp and forward to admins via Telegram."""
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+
+    user_id = body.get("user_id", "unknown")
+    message = (body.get("message") or "").strip()
+    if not message:
+        return web.json_response({"error": "Empty message"}, status=400)
+    if len(message) > 2000:
+        message = message[:2000]
+
+    admin_ids = [int(x.strip()) for x in settings.admin_ids.split(",") if x.strip()]
+    bot_token = settings.bot_token
+
+    text = (
+        f"📩 <b>Запрос в поддержку</b>\n\n"
+        f"👤 User ID: <code>{user_id}</code>\n"
+        f"💬 Сообщение:\n{message}"
+    )
+
+    if bot_token and admin_ids:
+        import aiohttp as _aio
+        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        async with _aio.ClientSession() as s:
+            for aid in admin_ids:
+                try:
+                    await s.post(url, json={
+                        "chat_id": aid,
+                        "text": text,
+                        "parse_mode": "HTML",
+                    })
+                except Exception as e:
+                    logger.warning("Failed to send support msg to admin %s: %s", aid, e)
+
+    logger.info("Support message from user %s: %s", user_id, message[:100])
+    return web.json_response({"status": "sent"})
+
+
+# ═══════════════════════════════════════
 # CORS + Static
 # ═══════════════════════════════════════
 
@@ -651,6 +696,7 @@ def create_app() -> web.Application:
     app.router.add_post("/api/admin/deposit", admin_deposit)
     app.router.add_get("/api/user/balance", user_balance)
     app.router.add_get("/api/me", get_me)
+    app.router.add_post("/api/support", support_message)
 
     # Serve webapp static files
     if WEBAPP_DIR.exists():

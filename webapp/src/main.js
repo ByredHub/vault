@@ -1078,10 +1078,52 @@ async function renderProfile() {
       .catch(() => toast('ID: ' + userId));
   });
 
-  // Support
+  // Support — in-app form
   document.getElementById('prof-support')?.addEventListener('click', () => {
     haptic('light');
-    tg?.openTelegramLink?.('https://t.me/vault_support') || window.open('https://t.me/vault_support', '_blank');
+    openModal(`
+      <div class="modal-bg" id="modal-bg">
+        <div class="modal-panel">
+          <div class="modal-grip"></div>
+          <div style="padding:20px 16px">
+            <div style="font-size:1rem;font-weight:700;color:var(--t1);margin-bottom:4px">💬 Поддержка</div>
+            <div style="font-size:.6875rem;color:var(--t4);margin-bottom:16px">Опишите проблему — ответим в Telegram</div>
+            <textarea id="support-msg" rows="4" placeholder="Ваше сообщение..." style="width:100%;padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;color:var(--t1);font-size:.8125rem;resize:none;font-family:inherit;box-sizing:border-box"></textarea>
+            <button class="btn-cta cta-stars" id="support-send" style="margin-top:12px">
+              <i class="bi bi-send"></i> Отправить
+            </button>
+          </div>
+        </div>
+      </div>
+    `);
+    document.getElementById('modal-bg')?.addEventListener('click', e => {
+      if (e.target === e.currentTarget) { closeModal(); haptic(); }
+    });
+    document.getElementById('support-send')?.addEventListener('click', async () => {
+      const msg = document.getElementById('support-msg')?.value?.trim();
+      if (!msg) { toast('Напишите сообщение'); return; }
+      const btn = document.getElementById('support-send');
+      btn.disabled = true;
+      btn.innerHTML = '<div class="spin" style="width:14px;height:14px;margin:0"></div> Отправка...';
+      try {
+        const uid = tg?.initDataUnsafe?.user?.id || '';
+        const res = await fetch('/api/support', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: uid, message: msg }),
+        });
+        if (!res.ok) throw new Error('Ошибка отправки');
+        haptic('success');
+        btn.innerHTML = '✅ Отправлено!';
+        btn.style.background = '#22c55e';
+        setTimeout(() => closeModal(), 1500);
+      } catch (err) {
+        haptic('error');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-send"></i> Отправить';
+        toast('❌ ' + (err.message || 'Ошибка'));
+      }
+    });
   });
 
   // Rules
