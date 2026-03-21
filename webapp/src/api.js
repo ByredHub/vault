@@ -134,34 +134,48 @@ export async function purchaseItem(itemId, onProgress) {
     body: JSON.stringify({ item_id: itemId, user_id: userId }),
   });
 
-  // Read NDJSON stream
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
+  // Parse NDJSON lines from response
+  function parseLine(line, result) {
+    if (!line.trim()) return result;
+    try {
+      const data = JSON.parse(line);
+      if (data.step === 'result') return data;
+      if (data.step === 'error') throw new Error(data.message);
+      if (data.step && onProgress) onProgress(data);
+    } catch (e) {
+      if (e.message && !e.message.includes('JSON')) throw e;
+    }
+    return result;
+  }
+
   let finalResult = null;
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  // Try streaming first, fallback to full text read
+  if (res.body && res.body.getReader) {
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      try {
-        const data = JSON.parse(line);
-        if (data.step === 'result') {
-          finalResult = data;
-        } else if (data.step === 'error') {
-          throw new Error(data.message);
-        } else if (onProgress) {
-          onProgress(data);
-        }
-      } catch (e) {
-        if (e.message && !e.message.includes('JSON')) throw e;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        finalResult = parseLine(line, finalResult);
       }
+    }
+    // Process any remaining buffer
+    if (buffer.trim()) {
+      finalResult = parseLine(buffer, finalResult);
+    }
+  } else {
+    // Fallback: read entire response as text
+    const text = await res.text();
+    const lines = text.split('\n');
+    for (const line of lines) {
+      finalResult = parseLine(line, finalResult);
     }
   }
 
