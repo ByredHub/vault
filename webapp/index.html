@@ -16,9 +16,9 @@
         <div class="header-logo">V</div>
         <span class="header-title">VAULT</span>
         <div class="header-right">
-          <div class="balance-pill">
+          <div class="balance-pill" id="balance-pill" style="display:none">
             <span class="balance-dot"></span>
-            $1,250
+            <span id="balance-amount"></span>
           </div>
           <button class="header-avatar" id="profile-btn" title="Профиль">
             <i class="bi bi-person-fill"></i>
@@ -36,19 +36,7 @@
               <div class="hero-title">Магазин аккаунтов</div>
               <div class="hero-desc">Моментальная покупка с гарантией.<br>Оплата через ⭐ Telegram Stars</div>
             </div>
-            <div class="hero-stats">
-              <div class="hero-stat">
-                <div class="hero-stat-val">2,400+</div>
-                <div class="hero-stat-label">Аккаунтов</div>
-              </div>
-              <div class="hero-stat">
-                <div class="hero-stat-val">1,247</div>
-                <div class="hero-stat-label">Клиентов</div>
-              </div>
-              <div class="hero-stat">
-                <div class="hero-stat-val">99%</div>
-                <div class="hero-stat-label">Успех</div>
-              </div>
+            <div class="hero-stats" id="hero-stats"></div>
             </div>
           </div>
         </div>
