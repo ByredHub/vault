@@ -44,6 +44,8 @@ function navigateTo(page) {
   haptic();
   document.querySelectorAll('.bnav-tab').forEach(t => t.classList.toggle('active', t.dataset.page === page));
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === `page-${page}`));
+  document.querySelector('.page-container')?.scrollTo(0, 0);
+  window.scrollTo(0, 0);
   ({ catalog: renderCatalog, orders: renderOrders, profile: renderProfile, admin: renderAdmin })[page]?.();
 }
 

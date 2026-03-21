@@ -120,9 +120,9 @@ a{text-decoration:none;color:inherit}
 .bnav-tab.active::before{opacity:1}
 
 /* ═══ PAGE ═══ */
-.page-container{flex:1;padding:16px;padding-bottom:calc(72px + var(--safe-b))}
-.page{display:none}
-.page.active{display:block;animation:fadeUp .3s cubic-bezier(.4,0,.2,1) both}
+.page-container{flex:1;padding:16px;padding-bottom:calc(72px + var(--safe-b));position:relative;overflow:hidden}
+.page{display:none !important;opacity:0}
+.page.active{display:block !important;opacity:1;animation:fadeUp .3s cubic-bezier(.4,0,.2,1) forwards}
 @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 
 /* ═══ HERO BANNER ═══ */
