@@ -276,7 +276,15 @@ function showPayment(itemId, price, title) {
       }
     } catch (err) {
       root.innerHTML = '';
-      toast('Ошибка: ' + err.message);
+      const msg = err.message || '';
+      if (msg.includes('404') || msg.includes('не найден')) {
+        toast('❌ Товар уже продан! Выберите другой.');
+        loadItems(); // Refresh catalog
+      } else if (msg.includes('429')) {
+        toast('⏳ Слишком частые запросы. Подождите.');
+      } else {
+        toast('❌ Ошибка: ' + msg);
+      }
     }
   });
 }
