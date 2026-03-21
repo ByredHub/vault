@@ -278,8 +278,11 @@ function showPayment(itemId, price, title) {
       root.innerHTML = '';
       const msg = err.message || '';
       if (msg.includes('404') || msg.includes('не найден')) {
-        toast('❌ Товар уже продан! Выберите другой.');
-        loadItems(); // Refresh catalog
+        toast('❌ Товар не найден на маркете!');
+        loadItems();
+      } else if (msg.includes('продан') || msg.includes('недоступен') || msg.includes('удалён') || msg.includes('Обновите каталог')) {
+        toast('❌ ' + msg);
+        loadItems();
       } else if (msg.includes('429')) {
         toast('⏳ Слишком частые запросы. Подождите.');
       } else {

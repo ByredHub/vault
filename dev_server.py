@@ -137,14 +137,27 @@ async def purchase_item(request: web.Request) -> web.Response:
         item_data = await lzt_api.get_item(item_id)
         item = item_data.get("item", {})
         if not item:
-            return web.json_response({"error": "Item not found"}, status=404)
+            return web.json_response({"error": "Товар не найден на маркете"}, status=404)
 
         original_price = item.get("price", 0)
         sell_price = settings.calculate_price(original_price)
         title = item.get("title", item.get("title_en", "Account"))
 
-        if item.get("item_state") != "active":
-            return web.json_response({"error": "Item is not available"}, status=400)
+        state = item.get("item_state", "unknown")
+        logger.info("Item #%d state: %s, price: %s", item_id, state, original_price)
+        if state != "active":
+            # Invalidate cached catalog so user sees fresh data
+            CATALOG_CACHE.clear()
+            state_labels = {
+                "closed": "уже продан",
+                "deleted": "удалён",
+                "awaiting": "на модерации",
+            }
+            label = state_labels.get(state, f"недоступен (статус: {state})")
+            return web.json_response(
+                {"error": f"Товар {label}. Обновите каталог."},
+                status=400,
+            )
 
         # 2. Upsert dev user
         await upsert_user(DEV_USER["id"], DEV_USER["username"], DEV_USER["first_name"])
