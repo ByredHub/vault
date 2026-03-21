@@ -113,9 +113,17 @@ export function blockUser(userId, blocked) {
   });
 }
 
-export function purchaseItem(itemId) {
+export async function purchaseItem(itemId) {
+  // Get user_id from Telegram or API
+  let userId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+  if (!userId) {
+    try {
+      const me = await fetch('/api/me').then(r => r.json());
+      userId = me.user_id;
+    } catch { /* ignore */ }
+  }
   return apiRequest('/api/purchase', {
     method: 'POST',
-    body: { item_id: itemId },
+    body: { item_id: itemId, user_id: userId },
   });
 }

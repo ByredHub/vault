@@ -166,18 +166,36 @@ async def purchase_item(request: web.Request) -> web.Response:
                 status=400,
             )
 
+        # Determine real user ID
+        user_id = body.get("user_id")
+        if not user_id:
+            init_data = request.headers.get("X-Telegram-Init-Data", "")
+            if init_data:
+                from urllib.parse import parse_qs, unquote
+                parsed = parse_qs(init_data)
+                user_raw = parsed.get("user", [None])[0]
+                if user_raw:
+                    try:
+                        tg_user = json.loads(unquote(user_raw))
+                        user_id = tg_user.get("id")
+                    except Exception:
+                        pass
+            if not user_id:
+                admin_list = [int(x.strip()) for x in settings.admin_ids.split(",") if x.strip()]
+                user_id = admin_list[0] if admin_list else DEV_USER["id"]
+        user_id = int(user_id)
+
         # Check user has enough Stars balance
-        user_id = DEV_USER["id"]  # TODO: extract from Telegram initData
-        user_balance = await get_user_balance(user_id)
+        user_bal = await get_user_balance(user_id)
         stars_needed = max(1, int(sell_price / 1.6))  # Same formula as frontend
-        if user_balance < stars_needed:
+        if user_bal < stars_needed:
             return web.json_response(
-                {"error": f"Недостаточно Stars. Нужно ⭐{stars_needed}, у вас ⭐{user_balance}"},
+                {"error": f"Недостаточно Stars. Нужно ⭐{stars_needed}, у вас ⭐{user_bal}"},
                 status=400,
             )
 
         # 2. Upsert user
-        await upsert_user(user_id, DEV_USER["username"], DEV_USER["first_name"])
+        await upsert_user(user_id, None, None)
 
         # 3. Deduct Stars from user balance
         from bot.db import withdraw_stars
