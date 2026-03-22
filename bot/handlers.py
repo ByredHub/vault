@@ -408,8 +408,27 @@ async def cb_back_start(callback: CallbackQuery) -> None:
 
 @router.pre_checkout_query()
 async def pre_checkout(query: PreCheckoutQuery) -> None:
-    """Handle Stars pre-checkout — always approve."""
-    await query.answer(ok=True)
+    """Handle Stars pre-checkout — validate payload before approving."""
+    try:
+        payload = json.loads(query.invoice_payload)
+        if payload.get("type") == "topup":
+            stars = payload.get("stars", 0)
+            if not isinstance(stars, int) or stars < 1 or stars > 10000:
+                await query.answer(ok=False, error_message="Некорректная сумма пополнения")
+                return
+        elif payload.get("order_id"):
+            order_id = payload["order_id"]
+            order = await get_order(order_id)
+            if not order:
+                await query.answer(ok=False, error_message="Заказ не найден")
+                return
+        else:
+            await query.answer(ok=False, error_message="Неизвестный тип платежа")
+            return
+        await query.answer(ok=True)
+    except Exception as e:
+        logger.error("Pre-checkout validation error: %s", e)
+        await query.answer(ok=False, error_message="Ошибка валидации платежа")
 
 
 @router.message(F.successful_payment)

@@ -17,11 +17,23 @@ import {
 const tg = window.Telegram?.WebApp;
 let isAdmin = false;
 
+function getInitData() {
+  return tg?.initData || '';
+}
+
+/** Fetch wrapper that adds Telegram init data header for auth. */
+function authFetch(url, options = {}) {
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Telegram-Init-Data': getInitData(),
+    ...(options.headers || {}),
+  };
+  return fetch(url, { ...options, headers });
+}
+
 async function initTelegram() {
-  // Check admin status from server
   try {
-    const uid = tg?.initDataUnsafe?.user?.id || '';
-    const res = await fetch(`/api/me?user_id=${uid}`);
+    const res = await authFetch('/api/me');
     if (res.ok) {
       const data = await res.json();
       isAdmin = data.is_admin || false;
@@ -88,6 +100,9 @@ let searchQuery = '';
 let sortBy = 'default';
 let priceMin = null;
 let priceMax = null;
+let currentCatalogPage = 1;
+let hasMoreItems = false;
+let isLoadingMore = false;
 
 function renderCategories() {
   const el = document.getElementById('categories-container');
@@ -111,15 +126,18 @@ function renderCategories() {
   });
 }
 
-async function loadItems(silent = false) {
+async function loadItems(silent = false, append = false) {
   const container = document.getElementById('items-container');
   const titleEl = document.getElementById('catalog-title');
   const countEl = document.getElementById('catalog-count');
   const catName = CATEGORIES.find(c => c.slug === selectedCategory)?.name || selectedCategory;
   titleEl.textContent = searchQuery ? `Поиск: ${searchQuery}` : catName;
 
-  // Skeletons only on non-silent load
-  if (!silent) {
+  if (!append) currentCatalogPage = 1;
+  if (append) isLoadingMore = true;
+
+  // Skeletons only on non-silent, non-append load
+  if (!silent && !append) {
     container.innerHTML = `<div class="items-grid">${Array(6).fill(`
       <div class="icard" style="pointer-events:none">
         <div class="icard-banner"><div class="skel" style="width:100%;height:100%"></div></div>
@@ -138,7 +156,7 @@ async function loadItems(silent = false) {
 
   let items = [];
   try {
-    const params = { category: selectedCategory };
+    const params = { category: selectedCategory, page: currentCatalogPage };
     if (searchQuery) params.title = searchQuery;
     if (priceMin != null) params.pmin = priceMin;
     if (priceMax != null) params.pmax = priceMax;
@@ -146,8 +164,14 @@ async function loadItems(silent = false) {
     else if (sortBy === 'price_desc') params.order_by = 'price';
     const data = await getCatalog(params);
     items = data.items || [];
+    hasMoreItems = data.hasMore || false;
   } catch (err) {
-    container.innerHTML = `<div class="empty"><div class="empty-icon"><i class="bi bi-exclamation-triangle"></i></div><div class="empty-title">Ошибка загрузки</div><div class="empty-desc">${esc(err.message)}</div></div>`;
+    if (!append) {
+      container.innerHTML = `<div class="empty"><div class="empty-icon"><i class="bi bi-exclamation-triangle"></i></div><div class="empty-title">Ошибка загрузки</div><div class="empty-desc">${esc(err.message)}</div></div>`;
+    } else {
+      toast('❌ ' + err.message);
+    }
+    isLoadingMore = false;
     return;
   }
 
@@ -159,9 +183,11 @@ async function loadItems(silent = false) {
   if (sortBy === 'price_asc') items = [...items].sort((a, b) => a.price - b.price);
   else if (sortBy === 'price_desc') items = [...items].sort((a, b) => b.price - a.price);
 
-  countEl.textContent = items.length ? `${items.length} шт.` : '';
+  if (!append) {
+    countEl.textContent = items.length ? `${items.length} шт.` : '';
+  }
 
-  if (!items.length) {
+  if (!items.length && !append) {
     container.innerHTML = `<div class="empty"><div class="empty-icon"><i class="bi bi-search"></i></div><div class="empty-title">Ничего не нашлось</div><div class="empty-desc">Попробуйте изменить фильтры</div></div>`;
     return;
   }
@@ -182,7 +208,7 @@ async function loadItems(silent = false) {
       .slice(0, maxLen);
   }
 
-  container.innerHTML = `<div class="items-grid">${items.map(item => {
+  const newCardsHtml = items.map(item => {
     const title = item.title || 'Аккаунт';
     const price = item.price || 0;
 
@@ -208,23 +234,49 @@ async function loadItems(silent = false) {
         </div>
       </div>
     `;
-  }).join('')}</div>`;
+  }).join('');
 
-  // Stagger animation
-  container.querySelectorAll('.icard').forEach((card, i) => {
-    card.style.opacity = '0';
-    card.style.transform = 'translateY(8px)';
-    setTimeout(() => {
-      card.style.transition = 'all 0.3s cubic-bezier(0.16,1,0.3,1)';
-      card.style.opacity = '1';
-      card.style.transform = 'translateY(0)';
-    }, i * 40);
+  // Load More button html
+  const loadMoreHtml = hasMoreItems ? `
+    <div style="grid-column:1/-1;text-align:center;padding:12px 0">
+      <button class="load-more-btn" id="load-more-btn" style="
+        padding:10px 32px;background:var(--raised);border:1px solid var(--border);
+        border-radius:10px;color:var(--t2);font-size:.8125rem;font-weight:600;
+        cursor:pointer;transition:all .2s;
+      ">Загрузить ещё</button>
+    </div>` : '';
+
+  if (append) {
+    // Append to existing grid
+    const grid = container.querySelector('.items-grid');
+    if (grid) {
+      // Remove old Load More button
+      grid.querySelector('#load-more-btn')?.closest('div[style*="grid-column"]')?.remove();
+      grid.insertAdjacentHTML('beforeend', newCardsHtml + loadMoreHtml);
+    }
+  } else {
+    container.innerHTML = `<div class="items-grid">${newCardsHtml}${loadMoreHtml}</div>`;
+  }
+
+  // Stagger animation for new cards
+  const allCards = container.querySelectorAll('.icard');
+  const startIdx = append ? allCards.length - items.length : 0;
+  allCards.forEach((card, i) => {
+    if (i >= startIdx) {
+      card.style.opacity = '0';
+      card.style.transform = 'translateY(8px)';
+      setTimeout(() => {
+        card.style.transition = 'all 0.3s cubic-bezier(0.16,1,0.3,1)';
+        card.style.opacity = '1';
+        card.style.transform = 'translateY(0)';
+      }, (i - startIdx) * 40);
+    }
   });
 
   // Card click → detail modal
   container.querySelectorAll('.icard[data-item]').forEach(card => {
     card.addEventListener('click', e => {
-      if (e.target.closest('[data-buy]')) return; // Don't trigger if buy button clicked
+      if (e.target.closest('[data-buy]')) return;
       haptic('light');
       try {
         const item = JSON.parse(card.dataset.item);
@@ -238,6 +290,18 @@ async function loadItems(silent = false) {
       e.stopPropagation();
       haptic('medium');
       showPayment(btn.dataset.buy, btn.dataset.price, btn.dataset.name);
+    });
+  });
+
+  // Load More button handler
+  document.getElementById('load-more-btn')?.addEventListener('click', () => {
+    haptic('medium');
+    const btn = document.getElementById('load-more-btn');
+    btn.disabled = true;
+    btn.textContent = 'Загрузка...';
+    currentCatalogPage++;
+    loadItems(true, true).finally(() => {
+      isLoadingMore = false;
     });
   });
 }
@@ -496,7 +560,7 @@ async function showOrderDetail(orderId) {
   });
 
   try {
-    const res = await fetch(`/api/orders/${orderId}`);
+    const res = await authFetch(`/api/orders/${orderId}`);
     if (!res.ok) throw new Error('Не удалось загрузить заказ');
     const { order } = await res.json();
     const ad = order.account_data || {};
@@ -630,7 +694,7 @@ async function showOrderDetail(orderId) {
       btn.innerHTML = '<div class="spin" style="width:14px;height:14px;margin:0"></div> Запрос...';
       haptic('medium');
       try {
-        const res = await fetch(`/api/telegram-code/${itemId}`);
+        const res = await authFetch(`/api/telegram-code/${itemId}`);
         const data = await res.json();
         if (!res.ok) {
           // Parse LZT error
@@ -656,7 +720,7 @@ async function showOrderDetail(orderId) {
       btn.innerHTML = '<div class="spin" style="width:14px;height:14px;margin:0"></div> Сброс...';
       haptic('heavy');
       try {
-        const res = await fetch(`/api/telegram-reset/${itemId}`, { method: 'POST' });
+        const res = await authFetch(`/api/telegram-reset/${itemId}`, { method: 'POST' });
         const data = await res.json();
         if (!res.ok) {
           const errMsg = data.error || '';
@@ -684,7 +748,7 @@ async function showOrderDetail(orderId) {
         btn.textContent = '⏳';
         try {
           const uid = tg?.initDataUnsafe?.user?.id || '';
-          const res = await fetch(`/api/orders/${oid}/send-tg`, {
+          const res = await authFetch(`/api/orders/${oid}/send-tg`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ format: fmt, user_id: uid }),
@@ -783,7 +847,7 @@ function showTelegramCodeModal(data, itemId) {
     btn.innerHTML = '<div class="spin" style="width:14px;height:14px;margin:0"></div> Запрос...';
     haptic('medium');
     try {
-      const res = await fetch(`/api/telegram-code/${id}`);
+      const res = await authFetch(`/api/telegram-code/${id}`);
       const newData = await res.json();
       if (!res.ok) {
         const errMsg = newData.error || '';
@@ -946,7 +1010,7 @@ function showDepositModal() {
     btn.disabled = true;
     btn.textContent = 'Зачисляем...';
     try {
-      const res = await fetch('/api/admin/deposit', {
+      const res = await authFetch('/api/admin/deposit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: uid, amount }),
@@ -1024,7 +1088,7 @@ function renderAdminItems(el) {
 
 async function renderAdminTickets(el) {
   el.innerHTML = '<div class="spin"></div>';
-  const res = await fetch('/api/admin/tickets').catch(() => null);
+  const res = await authFetch('/api/admin/tickets').catch(() => null);
   const data = res ? await res.json().catch(() => ({})) : {};
   const tickets = data.tickets || [];
 
@@ -1070,7 +1134,7 @@ async function showAdminTicketChat(ticketId) {
   });
 
   try {
-    const res = await fetch(`/api/tickets/${ticketId}`);
+    const res = await authFetch(`/api/tickets/${ticketId}`);
     const ticket = await res.json();
     if (!ticket || ticket.error) { toast('Тикет не найден'); closeModal(); return; }
 
@@ -1090,7 +1154,7 @@ async function showAdminTicketChat(ticketId) {
       </div>`;
 
     document.getElementById('atchat-close')?.addEventListener('click', async () => {
-      await fetch(`/api/tickets/${ticketId}/close`, { method: 'POST' });
+      await authFetch(`/api/tickets/${ticketId}/close`, { method: 'POST' });
       toast('Тикет закрыт');
       closeModal();
       renderAdminContent();
@@ -1133,7 +1197,7 @@ async function showAdminTicketChat(ticketId) {
         const reply = document.getElementById('atchat-reply')?.value?.trim();
         if (!reply) return;
         document.getElementById('atchat-send').disabled = true;
-        await fetch(`/api/tickets/${ticketId}/reply`, {
+        await authFetch(`/api/tickets/${ticketId}/reply`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sender: 'admin', message: reply }),
@@ -1183,7 +1247,7 @@ async function showTicketsList() {
 
   // Load tickets
   try {
-    const res = await fetch(`/api/tickets?user_id=${uid}`);
+    const res = await authFetch('/api/tickets');
     const data = await res.json();
     const tickets = data.tickets || [];
     const body = document.getElementById('tickets-body');
@@ -1317,7 +1381,7 @@ function showCreateTicket() {
       const attachments = selectedPhotos.length ? JSON.stringify(selectedPhotos.map(p => p.base64)) : null;
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 15000);
-      const res = await fetch('/api/support', {
+      const res = await authFetch('/api/support', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: uid, subject: subject || 'Обращение', message: msg, attachments }),
@@ -1359,7 +1423,7 @@ async function showTicketChat(ticketId) {
   });
 
   try {
-    const res = await fetch(`/api/tickets/${ticketId}`);
+    const res = await authFetch(`/api/tickets/${ticketId}`);
     const ticket = await res.json();
     if (!ticket || ticket.error) { toast('Тикет не найден'); closeModal(); return; }
 
@@ -1423,7 +1487,7 @@ async function showTicketChat(ticketId) {
         const btn = document.getElementById('tchat-send');
         btn.disabled = true;
         try {
-          await fetch(`/api/tickets/${ticketId}/reply`, {
+          await authFetch(`/api/tickets/${ticketId}/reply`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sender: 'user', message: reply }),
@@ -1457,7 +1521,7 @@ async function renderProfile() {
   // Fallback: get user info from API
   if (!tgUser) {
     try {
-      const res = await fetch('/api/me');
+      const res = await authFetch('/api/me');
       if (res.ok) {
         const data = await res.json();
         tgUser = { id: data.user_id, first_name: 'User', username: `id${data.user_id}`, photo_url: null };
@@ -1477,7 +1541,7 @@ async function renderProfile() {
   let starsBalance = 0;
   try {
     const balUrl = userId && userId !== '—' ? `/api/user/balance?user_id=${userId}` : '/api/user/balance';
-    const res = await fetch(balUrl);
+    const res = await authFetch(balUrl);
     if (res.ok) {
       const data = await res.json();
       starsBalance = data.stars_balance || 0;
@@ -1719,13 +1783,13 @@ async function loadBalance() {
     let uid = tgUser?.id || '';
     if (!uid) {
       try {
-        const meRes = await fetch('/api/me');
+        const meRes = await authFetch('/api/me');
         if (meRes.ok) { const me = await meRes.json(); uid = me.user_id || ''; }
       } catch { /* ignore */ }
     }
 
     const url = uid ? `/api/user/balance?user_id=${uid}` : '/api/user/balance';
-    const res = await fetch(url);
+    const res = await authFetch(url);
     if (!res.ok) return;
     const data = await res.json();
     icon.textContent = '⭐';

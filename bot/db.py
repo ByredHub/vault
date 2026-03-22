@@ -195,19 +195,16 @@ async def deposit_stars(user_id: int, amount: int) -> int:
 
 
 async def withdraw_stars(user_id: int, amount: int) -> bool:
-    """Deduct Stars from user balance. Returns True if sufficient funds."""
+    """Deduct Stars from user balance atomically. Returns True if sufficient funds."""
     db = await get_db()
     try:
-        cursor = await db.execute("SELECT stars_balance FROM users WHERE user_id = ?", (user_id,))
-        row = await cursor.fetchone()
-        if not row or row["stars_balance"] < amount:
-            return False
-        await db.execute(
-            "UPDATE users SET stars_balance = stars_balance - ? WHERE user_id = ?",
-            (amount, user_id),
+        cursor = await db.execute(
+            "UPDATE users SET stars_balance = stars_balance - ? "
+            "WHERE user_id = ? AND stars_balance >= ?",
+            (amount, user_id, amount),
         )
         await db.commit()
-        return True
+        return cursor.rowcount > 0
     finally:
         await db.close()
 
@@ -380,8 +377,9 @@ async def get_stats() -> dict:
         row = await cursor.fetchone()
         stats["total_revenue"] = row["total"] if row else 0.0
 
-        # Today stats
-        today_start = int(time.time()) - (int(time.time()) % 86400)
+        # Today stats (MSK timezone UTC+3)
+        now = int(time.time())
+        today_start = now - ((now + 3 * 3600) % 86400)
         cursor = await db.execute(
             "SELECT COUNT(*) as cnt, COALESCE(SUM(profit), 0) as profit FROM orders WHERE status = 'completed' AND completed_at >= ?",
             (today_start,),

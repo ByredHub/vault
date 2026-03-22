@@ -169,8 +169,8 @@ class TelegramStarsProvider(PaymentProvider):
         description: str,
     ) -> dict[str, Any]:
         """Stars payment is handled directly by aiogram in the handler."""
-        # Stars conversion: ~1 Star ≈ 1.3 RUB (approximate)
-        stars_amount = max(1, int(amount / 1.3))
+        # Stars conversion: 1 Star ≈ 1.6 RUB
+        stars_amount = max(1, int(amount / 1.6))
         return {
             "url": "",  # Handled inline by bot
             "payment_id": str(order_id),

@@ -1,15 +1,19 @@
 """
-Dev server — runs web API + serves webapp WITHOUT Telegram bot.
-Bypasses Telegram auth for local testing.
+Dev server — runs web API + serves webapp.
+Validates Telegram init data for auth in production.
 Usage: python dev_server.py
 """
 import asyncio
+import hashlib
+import hmac
 import json
 import logging
 import os
 import sys
 import time
 from pathlib import Path
+from typing import Any
+from urllib.parse import parse_qs, unquote
 
 from aiohttp import web
 
@@ -33,8 +37,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger("dev_server")
 
-# Fake user for dev mode
+# Fake user for dev mode (only when BOT_TOKEN is missing)
 DEV_USER = {"id": 9999699, "username": "dev_tester", "first_name": "Dev"}
+DEV_MODE = not settings.bot_token  # true only when no bot token configured
 
 WEBAPP_DIR = Path(__file__).parent / "webapp"
 
@@ -42,6 +47,74 @@ WEBAPP_DIR = Path(__file__).parent / "webapp"
 CATALOG_CACHE: dict[str, tuple[dict, float]] = {}
 CACHE_TTL = 45  # seconds — short TTL keeps items fresh
 MAX_CACHE_ENTRIES = 50
+
+
+# ═══════════════════════════════════════
+# Telegram Init Data Validation
+# ═══════════════════════════════════════
+
+def validate_init_data(init_data: str) -> dict[str, Any] | None:
+    """Validate Telegram Mini App init data. Returns user dict if valid."""
+    try:
+        parsed = parse_qs(init_data)
+        received_hash = parsed.get("hash", [None])[0]
+        if not received_hash:
+            return None
+        data_pairs = []
+        for key, values in sorted(parsed.items()):
+            if key != "hash":
+                data_pairs.append(f"{key}={values[0]}")
+        data_check_string = "\n".join(data_pairs)
+        secret_key = hmac.new(b"WebAppData", settings.bot_token.encode(), hashlib.sha256).digest()
+        computed_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(computed_hash, received_hash):
+            return None
+        user_raw = parsed.get("user", [None])[0]
+        if user_raw:
+            return json.loads(unquote(user_raw))
+        return None
+    except Exception as e:
+        logger.error("Init data validation error: %s", e)
+        return None
+
+
+def get_user_from_request(request: web.Request) -> dict[str, Any] | None:
+    """Extract and validate user from request. Returns user dict or None."""
+    init_data = request.headers.get("X-Telegram-Init-Data", "")
+    if init_data and settings.bot_token:
+        user = validate_init_data(init_data)
+        if user:
+            return user
+    # Dev mode fallback — only when bot token is not configured
+    if DEV_MODE:
+        admin_list = settings.admin_id_list
+        uid = admin_list[0] if admin_list else DEV_USER["id"]
+        return {"id": uid, "username": "dev", "first_name": "Dev"}
+    return None
+
+
+def require_auth(handler):
+    """Decorator: require valid auth."""
+    async def wrapper(request: web.Request) -> web.Response:
+        user = get_user_from_request(request)
+        if not user:
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        request["tg_user"] = user
+        return await handler(request)
+    return wrapper
+
+
+def require_admin(handler):
+    """Decorator: require admin privileges."""
+    async def wrapper(request: web.Request) -> web.Response:
+        user = get_user_from_request(request)
+        if not user:
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        if not settings.is_admin(user.get("id", 0)):
+            return web.json_response({"error": "Forbidden"}, status=403)
+        request["tg_user"] = user
+        return await handler(request)
+    return wrapper
 
 
 async def _notify_purchase(user_id: int, item_title: str, order_id: int, stars: int) -> None:
@@ -73,6 +146,7 @@ async def _notify_purchase(user_id: int, item_title: str, order_id: int, stars: 
 # Catalog endpoints (real LZT data)
 # ═══════════════════════════════════════
 
+@require_auth
 async def get_catalog(request: web.Request) -> web.Response:
     """Get items from LZT Market with markup. Only active items returned."""
     category = request.query.get("category", "telegram")
@@ -109,6 +183,8 @@ async def get_catalog(request: web.Request) -> web.Response:
         else:
             items = raw_items
 
+        total_on_page = len(items) if isinstance(items, list) else 0
+
         # Only keep active (available for purchase) items
         items = [i for i in items if i.get("item_state") == "active"]
 
@@ -131,10 +207,14 @@ async def get_catalog(request: web.Request) -> web.Response:
             slim["price"] = settings.calculate_price(original)
             slim_items.append(slim)
 
+        # hasMore = LZT returned items on this page (likely more pages exist)
+        has_more = total_on_page >= 10
+
         result = {
             "items": slim_items,
-            "totalItems": len(slim_items),
+            "totalItems": data.get("totalItems", len(slim_items)),
             "currentPage": page,
+            "hasMore": has_more,
         }
 
         # Store in cache (evict oldest if over limit)
@@ -149,6 +229,7 @@ async def get_catalog(request: web.Request) -> web.Response:
         return web.json_response({"error": str(e)}, status=500)
 
 
+@require_auth
 async def get_item_detail(request: web.Request) -> web.Response:
     """Get single item detail."""
     item_id = int(request.match_info["item_id"])
@@ -167,6 +248,7 @@ async def get_item_detail(request: web.Request) -> web.Response:
 # Purchase endpoint (real purchase!)
 # ═══════════════════════════════════════
 
+@require_auth
 async def purchase_item(request: web.Request) -> web.Response:
     """Full purchase flow: reserve -> check -> confirm."""
     try:
@@ -207,23 +289,8 @@ async def purchase_item(request: web.Request) -> web.Response:
                 status=400,
             )
 
-        # Determine real user ID
-        user_id = body.get("user_id")
-        if not user_id:
-            init_data = request.headers.get("X-Telegram-Init-Data", "")
-            if init_data:
-                from urllib.parse import parse_qs, unquote
-                parsed = parse_qs(init_data)
-                user_raw = parsed.get("user", [None])[0]
-                if user_raw:
-                    try:
-                        tg_user = json.loads(unquote(user_raw))
-                        user_id = tg_user.get("id")
-                    except Exception:
-                        pass
-            if not user_id:
-                admin_list = [int(x.strip()) for x in settings.admin_ids.split(",") if x.strip()]
-                user_id = admin_list[0] if admin_list else DEV_USER["id"]
+        # Get user ID from auth
+        user_id = request["tg_user"]["id"]
         user_id = int(user_id)
 
         # Check user has enough Stars balance
@@ -332,28 +399,15 @@ async def purchase_item(request: web.Request) -> web.Response:
         return web.json_response({"error": str(e)}, status=500)
 
 
+@require_auth
 async def get_orders(request: web.Request) -> web.Response:
     """Get user orders."""
-    user_id = request.query.get("user_id")
-    if not user_id:
-        init_data = request.headers.get("X-Telegram-Init-Data", "")
-        if init_data:
-            from urllib.parse import parse_qs, unquote
-            parsed = parse_qs(init_data)
-            user_raw = parsed.get("user", [None])[0]
-            if user_raw:
-                try:
-                    tg_user = json.loads(unquote(user_raw))
-                    user_id = tg_user.get("id")
-                except Exception:
-                    pass
-        if not user_id:
-            admin_list = [int(x.strip()) for x in settings.admin_ids.split(",") if x.strip()]
-            user_id = admin_list[0] if admin_list else DEV_USER["id"]
+    user_id = request["tg_user"]["id"]
     orders = await get_user_orders(int(user_id))
     return web.json_response({"orders": orders})
 
 
+@require_auth
 async def get_order_detail(request: web.Request) -> web.Response:
     """Get order details including account data."""
     order_id = int(request.match_info["order_id"])
@@ -361,8 +415,12 @@ async def get_order_detail(request: web.Request) -> web.Response:
     if not order:
         return web.json_response({"error": "Заказ не найден"}, status=404)
 
+    # Only allow owner or admin to view
+    user = request["tg_user"]
+    if order["user_id"] != user["id"] and not settings.is_admin(user["id"]):
+        return web.json_response({"error": "Forbidden"}, status=403)
+
     result = dict(order)
-    # Parse account_data JSON string
     if result.get("account_data"):
         try:
             result["account_data"] = json.loads(result["account_data"])
@@ -393,6 +451,7 @@ def _parse_lzt_error(error: str) -> str:
     return "Ошибка: " + e[:100]
 
 
+@require_auth
 async def telegram_login_code(request: web.Request) -> web.Response:
     """Request Telegram login code for a purchased account."""
     item_id = int(request.match_info["item_id"])
@@ -404,6 +463,7 @@ async def telegram_login_code(request: web.Request) -> web.Response:
         return web.json_response({"error": _parse_lzt_error(e)}, status=400)
 
 
+@require_auth
 async def telegram_reset_auth(request: web.Request) -> web.Response:
     """Reset other Telegram authorizations for a purchased account."""
     item_id = int(request.match_info["item_id"])
@@ -415,8 +475,9 @@ async def telegram_reset_auth(request: web.Request) -> web.Response:
         return web.json_response({"error": _parse_lzt_error(e)}, status=400)
 
 
+@require_admin
 async def get_balance(request: web.Request) -> web.Response:
-    """Get LZT balance (regular + purchase)."""
+    """Get LZT balance (regular + purchase). Admin only."""
     try:
         me = await lzt_api.get_me()
         user_data = me.get("user", {})
@@ -425,7 +486,6 @@ async def get_balance(request: web.Request) -> web.Response:
             "hold": user_data.get("hold", 0),
             "purchase_balance": 0,
         }
-        # Get purchase balance from exchange data
         try:
             exchange = await lzt_api.get_balances()
             for key in ("from", "to"):
@@ -445,28 +505,10 @@ async def get_balance(request: web.Request) -> web.Response:
 # User balance endpoint
 # ═══════════════════════════════════════
 
+@require_auth
 async def user_balance(request: web.Request) -> web.Response:
     """Get current user's Stars balance."""
-    # Try to get user_id from query, then from initData header, then fallback
-    user_id = request.query.get("user_id")
-    if user_id:
-        user_id = int(user_id)
-    else:
-        # Try Telegram initData
-        init_data = request.headers.get("X-Telegram-Init-Data", "")
-        if init_data:
-            import json
-            from urllib.parse import parse_qs, unquote
-            parsed = parse_qs(init_data)
-            user_raw = parsed.get("user", [None])[0]
-            if user_raw:
-                try:
-                    tg_user = json.loads(unquote(user_raw))
-                    user_id = tg_user.get("id")
-                except Exception:
-                    pass
-        if not user_id:
-            user_id = DEV_USER["id"]
+    user_id = request["tg_user"]["id"]
     balance = await get_user_balance(user_id)
     return web.json_response({"stars_balance": balance, "user_id": user_id})
 
@@ -475,11 +517,11 @@ async def user_balance(request: web.Request) -> web.Response:
 # Admin endpoints
 # ═══════════════════════════════════════
 
+@require_admin
 async def admin_stats(request: web.Request) -> web.Response:
     """Get admin dashboard stats."""
     try:
         stats = await get_stats()
-        # Add total Stars across all users
         from bot.db import get_db
         db = await get_db()
         try:
@@ -488,7 +530,6 @@ async def admin_stats(request: web.Request) -> web.Response:
             stats["total_stars"] = row["total"] if row else 0
         finally:
             await db.close()
-        # Add LZT balances (regular + purchase)
         try:
             me = await lzt_api.get_me()
             user_data = me.get("user", {})
@@ -513,6 +554,7 @@ async def admin_stats(request: web.Request) -> web.Response:
         return web.json_response({"error": str(e)}, status=500)
 
 
+@require_admin
 async def admin_deposit(request: web.Request) -> web.Response:
     """Admin: deposit Stars to a user's balance."""
     try:
@@ -531,7 +573,6 @@ async def admin_deposit(request: web.Request) -> web.Response:
     if amount <= 0:
         return web.json_response({"error": "amount must be positive"}, status=400)
 
-    # Ensure user exists
     await upsert_user(user_id, None, None)
 
     new_balance = await deposit_stars(user_id, amount)
@@ -545,6 +586,7 @@ async def admin_deposit(request: web.Request) -> web.Response:
     })
 
 
+@require_admin
 async def admin_orders(request: web.Request) -> web.Response:
     """Get all orders for admin."""
     status = request.query.get("status")
@@ -552,6 +594,7 @@ async def admin_orders(request: web.Request) -> web.Response:
     return web.json_response({"orders": orders})
 
 
+@require_admin
 async def admin_users(request: web.Request) -> web.Response:
     """Get all users for admin."""
     users = await get_all_users()
@@ -560,40 +603,14 @@ async def admin_users(request: web.Request) -> web.Response:
 
 async def get_me(request: web.Request) -> web.Response:
     """Get current user info + admin check."""
-    user_id = None
+    user = get_user_from_request(request)
+    if not user:
+        return web.json_response({"user_id": 0, "is_admin": False})
 
-    # 1. Try Telegram initData header
-    init_data = request.headers.get("X-Telegram-Init-Data", "")
-    if init_data:
-        import json as _json
-        from urllib.parse import parse_qs, unquote
-        parsed = parse_qs(init_data)
-        user_raw = parsed.get("user", [None])[0]
-        if user_raw:
-            try:
-                tg_user = _json.loads(unquote(user_raw))
-                user_id = tg_user.get("id")
-            except Exception:
-                pass
-
-    # 2. Try query param
-    if not user_id:
-        raw = request.query.get("user_id", "")
-        if raw:
-            try:
-                user_id = int(raw)
-            except ValueError:
-                pass
-
-    # 3. Fallback to first admin ID (the real owner)
-    if not user_id:
-        admin_list = [int(x.strip()) for x in settings.admin_ids.split(",") if x.strip()]
-        user_id = admin_list[0] if admin_list else DEV_USER["id"]
-
-    admin_ids = [int(x.strip()) for x in settings.admin_ids.split(",") if x.strip()]
+    user_id = user["id"]
     return web.json_response({
         "user_id": user_id,
-        "is_admin": user_id in admin_ids,
+        "is_admin": settings.is_admin(user_id),
     })
 
 
@@ -601,6 +618,7 @@ async def get_me(request: web.Request) -> web.Response:
 # Send account data to Telegram
 # ═══════════════════════════════════════
 
+@require_auth
 async def send_account_tg(request: web.Request) -> web.Response:
     """Send account data as file to user in Telegram."""
     order_id = int(request.match_info["order_id"])
@@ -714,6 +732,7 @@ async def send_account_tg(request: web.Request) -> web.Response:
 # Support
 # ═══════════════════════════════════════
 
+@require_auth
 async def support_message(request: web.Request) -> web.Response:
     """Create a support ticket and notify admins."""
     try:
@@ -721,11 +740,7 @@ async def support_message(request: web.Request) -> web.Response:
     except Exception:
         return web.json_response({"error": "Invalid JSON"}, status=400)
 
-    user_id = body.get("user_id", 0)
-    try:
-        user_id = int(user_id)
-    except (ValueError, TypeError):
-        user_id = 0
+    user_id = request["tg_user"]["id"]
     subject = (body.get("subject") or "Обращение в поддержку").strip()[:200]
     message = (body.get("message") or "").strip()
     if not message:
@@ -760,26 +775,29 @@ async def support_message(request: web.Request) -> web.Response:
     return web.json_response({"status": "created", "ticket_id": ticket_id})
 
 
+@require_auth
 async def tickets_list(request: web.Request) -> web.Response:
     """Get user's tickets."""
-    uid = request.query.get("user_id", "0")
-    try:
-        uid = int(uid)
-    except ValueError:
-        uid = 0
+    uid = request["tg_user"]["id"]
     tickets = await get_user_tickets(uid)
     return web.json_response({"tickets": tickets})
 
 
+@require_auth
 async def ticket_detail(request: web.Request) -> web.Response:
     """Get ticket with messages."""
     tid = int(request.match_info["id"])
     ticket = await get_ticket_detail(tid)
     if not ticket:
         return web.json_response({"error": "Not found"}, status=404)
+    # Only owner or admin can view
+    user = request["tg_user"]
+    if ticket["user_id"] != user["id"] and not settings.is_admin(user["id"]):
+        return web.json_response({"error": "Forbidden"}, status=403)
     return web.json_response(ticket)
 
 
+@require_auth
 async def ticket_reply(request: web.Request) -> web.Response:
     """Add reply to ticket (admin or user)."""
     tid = int(request.match_info["id"])
@@ -788,7 +806,9 @@ async def ticket_reply(request: web.Request) -> web.Response:
     except Exception:
         return web.json_response({"error": "Invalid JSON"}, status=400)
 
-    sender = body.get("sender", "admin")  # 'admin' or 'user'
+    user = request["tg_user"]
+    # Determine sender role — only admins can send as 'admin'
+    sender = "admin" if settings.is_admin(user["id"]) else "user"
     message = (body.get("message") or "").strip()
     if not message:
         return web.json_response({"error": "Empty message"}, status=400)
@@ -812,13 +832,15 @@ async def ticket_reply(request: web.Request) -> web.Response:
     return web.json_response({"status": "sent"})
 
 
+@require_admin
 async def ticket_close(request: web.Request) -> web.Response:
-    """Close a ticket."""
+    """Close a ticket. Admin only."""
     tid = int(request.match_info["id"])
     await close_ticket(tid)
     return web.json_response({"status": "closed"})
 
 
+@require_admin
 async def admin_tickets(request: web.Request) -> web.Response:
     """Get all tickets (admin)."""
     tickets = await get_all_tickets()
@@ -840,8 +862,8 @@ async def cors_middleware(request: web.Request, handler) -> web.Response:
             response = ex
 
     response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Telegram-Init-Data"
     return response
 
 

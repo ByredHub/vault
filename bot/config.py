@@ -1,6 +1,8 @@
 """
 LZT Market Bot — Configuration
 """
+import functools
+
 from pydantic_settings import BaseSettings
 from pydantic import Field
 
@@ -31,7 +33,7 @@ class Settings(BaseSettings):
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
-    @property
+    @functools.cached_property
     def admin_id_list(self) -> list[int]:
         """Parse comma-separated admin IDs into a list of integers."""
         if not self.admin_ids:
@@ -48,7 +50,7 @@ class Settings(BaseSettings):
         if markup < self.min_markup_rub:
             markup = self.min_markup_rub
         price_rub = original_price + markup
-        stars = max(65, int(price_rub / 1.6))
+        stars = max(1, int(price_rub / 1.6))
         return stars
 
 
