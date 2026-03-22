@@ -6,6 +6,8 @@ import logging
 
 from aiogram import Router, F
 from aiogram.filters import Command, CommandStart
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
     Message,
     CallbackQuery,
@@ -26,6 +28,11 @@ from bot.services.lzt_api import lzt_api
 
 logger = logging.getLogger(__name__)
 router = Router()
+
+
+class TopupStates(StatesGroup):
+    """FSM states for custom top-up amount input."""
+    waiting_for_amount = State()
 
 WEBAPP_URL = settings.webapp_url
 
@@ -200,6 +207,7 @@ async def _show_topup_menu(message: Message, edit: bool = False) -> None:
         buttons.append([
             InlineKeyboardButton(text=f"⭐ {label}", callback_data=f"topup:{amount}")
         ])
+    buttons.append([InlineKeyboardButton(text="✏️ Своя сумма", callback_data="topup_custom")])
     buttons.append([InlineKeyboardButton(text="↩️ Назад", callback_data="back_start")])
 
     kb = InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -230,6 +238,67 @@ async def cb_topup_amount(callback: CallbackQuery) -> None:
         description=f"Пополнение баланса VAULT на {amount} Stars (~{round(amount * 1.6)}₽)",
         payload=json.dumps({"type": "topup", "stars": amount}),
         currency="XTR",  # Telegram Stars currency
+        prices=[LabeledPrice(label=f"{amount} Stars", amount=amount)],
+    )
+
+
+@router.callback_query(F.data == "topup_custom")
+async def cb_topup_custom(callback: CallbackQuery, state: FSMContext) -> None:
+    """User wants to enter a custom top-up amount."""
+    await callback.answer()
+    await state.set_state(TopupStates.waiting_for_amount)
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="topup_custom_cancel")],
+    ])
+
+    await callback.message.answer(
+        "✏️ <b>Своя сумма</b>\n\n"
+        "Введи количество Stars для пополнения\n"
+        "(от 1 до 10000):\n\n"
+        "💡 <b>Курс:</b> 1 ⭐ = 1.6 ₽",
+        reply_markup=kb,
+    )
+
+
+@router.callback_query(F.data == "topup_custom_cancel")
+async def cb_topup_custom_cancel(callback: CallbackQuery, state: FSMContext) -> None:
+    """Cancel custom top-up input."""
+    await state.clear()
+    await callback.answer("Отменено")
+    await _show_topup_menu(callback.message, edit=False)
+
+
+@router.message(TopupStates.waiting_for_amount)
+async def process_custom_topup_amount(message: Message, state: FSMContext) -> None:
+    """Process the custom top-up amount entered by the user."""
+    text = (message.text or "").strip()
+
+    if not text.isdigit():
+        await message.answer(
+            "❌ Введи целое число.\n"
+            "Например: <b>75</b> или <b>300</b>",
+        )
+        return
+
+    amount = int(text)
+
+    if amount < 1 or amount > 10000:
+        await message.answer(
+            "❌ Сумма должна быть от <b>1</b> до <b>10000</b> Stars.\n"
+            "Попробуй ещё раз:",
+        )
+        return
+
+    # Clear FSM state
+    await state.clear()
+
+    # Send Stars invoice
+    await message.answer_invoice(
+        title=f"Пополнение ⭐ {amount} Stars",
+        description=f"Пополнение баланса VAULT на {amount} Stars (~{round(amount * 1.6)}₽)",
+        payload=json.dumps({"type": "topup", "stars": amount}),
+        currency="XTR",
         prices=[LabeledPrice(label=f"{amount} Stars", amount=amount)],
     )
 
